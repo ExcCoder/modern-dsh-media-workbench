@@ -1,4 +1,4 @@
-# Modern-MediaStudio · @modern/dsh-media-workbench
+# Modern-MediaStudio · @exccoder/dsh-media-workbench
 
 A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) plugin that adds a **Modern-MediaStudio** to the sidebar with four connected workbenches:
 
@@ -19,7 +19,7 @@ Requires DSH `0.2.x` (verified on `0.2.2-rc.1`).
 
 ```bash
 # after the package is published
-dsh plugin --profile desktop add @modern/dsh-media-workbench
+dsh plugin --profile desktop add @exccoder/dsh-media-workbench
 
 # or from a local checkout
 dsh plugin --profile desktop add /absolute/path/to/dsh-media-workbench

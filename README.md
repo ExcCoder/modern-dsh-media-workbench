@@ -1,4 +1,4 @@
-# 摩登-媒体工作室 · @modern/dsh-media-workbench
+# 摩登-媒体工作室 · @exccoder/dsh-media-workbench
 
 一个 DeepSeek Harness（DSH）插件。装上之后，DSH 侧栏会多一个「摩登-媒体工作室」，里面是四个连在一起的工作台：
 
@@ -33,13 +33,13 @@ GitHub：[ExcCoder/modern-dsh-media-workbench](https://github.com/ExcCoder/moder
 
 ```bash
 # 发布到 npm 之后
-dsh plugin --profile desktop add @modern/dsh-media-workbench
+dsh plugin --profile desktop add @exccoder/dsh-media-workbench
 
 # 从本地目录安装
 dsh plugin --profile desktop add /absolute/path/to/dsh-media-workbench
 ```
 
-装好后**完全退出 DSH 再打开**，侧栏出现「摩登-媒体工作室」。卸载用 `remove @modern/dsh-media-workbench`；你的作品在 `~/.dsh/media-workbench-modern/`，不会跟着删。
+装好后**完全退出 DSH 再打开**，侧栏出现「摩登-媒体工作室」。卸载用 `remove @exccoder/dsh-media-workbench`；你的作品在 `~/.dsh/media-workbench-modern/`，不会跟着删。
 
 > 本地目录安装会以 `link:` 方式直接引用源码；想把插件挪到别处或打包分发，用 `npm pack` 生成 tgz 再安装。
 
@@ -133,7 +133,7 @@ tools/        本地预览和离线验证脚本
 - 安全问题：[SECURITY.md](SECURITY.md)。
 - 参与开发：[CONTRIBUTING.md](CONTRIBUTING.md)。
 - 发布到 npm / GitHub 的步骤：[PUBLISHING.md](PUBLISHING.md)。
-- npm 包名 `@modern/dsh-media-workbench` 查询时未被占用（2026-11-07）；发布前请确认你的 npm 账号属于 `@modern` scope，否则 `npm publish` 会返回 403。改用其他 scope 时需要同步四处包名，见 [PUBLISHING.md](PUBLISHING.md)。
+- npm 包名 `@exccoder/dsh-media-workbench` 使用 npm 账号 `exccoder` 的用户 scope，发布不需要组织权限；改用其他 scope 时需要同步四处包名，见 [PUBLISHING.md](PUBLISHING.md)。
 
 本项目的代码是原创实现；产品灵感来自 LevelUpAgent 的创作空间，未复制其源码或素材。
 

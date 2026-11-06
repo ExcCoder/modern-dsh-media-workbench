@@ -11,15 +11,15 @@ npm pack --dry-run
 
 Check that the package contains only `src/`, `lib/`, `web/`, `docs/`, the patch file, README/LICENSE and changelog/security docs. `release/`, `.shots/`, `.dev-home/`, `node_modules/` and development scripts in `tools/` are excluded by `package.json` `files`.
 
-The npm name `@modern/dsh-media-workbench` was available on 2026-11-07. Verify again before publishing:
+The npm name `@exccoder/dsh-media-workbench` was available on 2026-11-07. Verify again before publishing:
 
 ```bash
-npm view @modern/dsh-media-workbench version --registry=https://registry.npmjs.org
+npm view @exccoder/dsh-media-workbench version --registry=https://registry.npmjs.org
 ```
 
 If it is taken, either rename the package and `cordis.patch.yml` `name`, or publish under another scope such as `@your-scope/dsh-media-workbench`.
 
-> **Scope ownership:** publishing `@modern/...` requires your npm account to be a member of the `@modern` org (or to own that scope). A 404 from `npm view` only means the package is free; it does not prove you can publish under the scope. If `npm publish` returns 403, use your own scope instead and update the package name in **all four** places: `package.json` `name`, `cordis.patch.yml` `name`, `src/index.js` `export const name`, and `lib/client.js` `id` (the browser module id must equal the package name).
+> **Scope ownership:** `@exccoder` is the npm account's user scope, so no organisation membership is needed. If you publish under a different scope later, update the package name in **all four** places: `package.json` `name`, `cordis.patch.yml` `name`, `src/index.js` `export const name`, and `lib/client.js` `id` (the browser module id must equal the package name).
 
 ## 2. Repository metadata
 
@@ -38,7 +38,7 @@ git clone https://github.com/ExcCoder/modern-dsh-media-workbench.git
 cd modern-dsh-media-workbench
 # copy the plugin source into this directory
 git add .
-git commit -m "release: v0.1.1"
+git commit -m "release: v0.1.2"
 git push origin master
 ```
 
@@ -64,18 +64,18 @@ The package has no runtime dependencies, so the tarball is around 300 KB (mostly
 After publishing, install with:
 
 ```bash
-dsh plugin --profile desktop add @modern/dsh-media-workbench
+dsh plugin --profile desktop add @exccoder/dsh-media-workbench
 ```
 
 Users must fully restart DSH after installing a new plugin.
 
 ## 5. Create a GitHub release
 
-Use the version as the tag (`v0.1.1`), copy the matching section of `CHANGELOG.md` into the release notes, and attach the artifacts from `release/`:
+Use the version as the tag (`v0.1.2`), copy the matching section of `CHANGELOG.md` into the release notes, and attach the artifacts from `release/`:
 
-- `modern-dsh-media-workbench-0.1.1.tgz`
-- `modern-dsh-media-workbench-0.1.1-source.zip`
-- `modern-dsh-media-workbench-0.1.1-source.tar.gz`
+- `exccoder-dsh-media-workbench-0.1.2.tgz`
+- `exccoder-dsh-media-workbench-0.1.2-source.zip`
+- `exccoder-dsh-media-workbench-0.1.2-source.tar.gz`
 - `SHA256SUMS.txt`
 
 ## 6. Release checklist

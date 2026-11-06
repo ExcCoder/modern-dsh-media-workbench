@@ -1,4 +1,4 @@
-// @modern/dsh-media-workbench · host 工具函数：HTTP、文件、安全校验
+// @exccoder/dsh-media-workbench · host 工具函数：HTTP、文件、安全校验
 import { createReadStream } from 'node:fs'
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { extname, join, normalize, sep } from 'node:path'

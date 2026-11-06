@@ -2,9 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-11-07
+
+First npm publication as **@exccoder/dsh-media-workbench**. The package was renamed from the `@modern` scope before publishing; there are no functional changes since 0.1.1. The GitHub `v0.1.1` release is superseded by `v0.1.2`.
+
 ## [0.1.1] - 2026-11-07
 
-First public release as **@modern/dsh-media-workbench** — 摩登-媒体工作室 / Modern-MediaStudio.
+Initial GitHub release under `@modern/dsh-media-workbench`; not published to npm. Superseded by 0.1.2.
 
 ### Added
 

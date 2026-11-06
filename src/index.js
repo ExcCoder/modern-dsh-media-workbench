@@ -1,4 +1,4 @@
-// @modern/dsh-media-workbench · host 入口
+// @exccoder/dsh-media-workbench · host 入口
 // 四个工作台共用一套本机存储：生图 / 视频 / 写作 / 星图
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -16,7 +16,7 @@ import { cleanOutput, writingPrompts } from './writing.js'
 const ROOT = dirname(fileURLToPath(import.meta.url))
 const WEB_DIR = join(ROOT, '..', 'web')
 const BASE = '/media-workbench-modern'
-const VERSION = '0.1.1'
+const VERSION = '0.1.2'
 
 const STATIC = new Map([
   ['', 'index.html'],
@@ -45,7 +45,7 @@ function rejection(ctx, req) {
   return connection.requestRejection({ headers: req.headers })
 }
 
-export const name = '@modern/dsh-media-workbench'
+export const name = '@exccoder/dsh-media-workbench'
 export const inject = ['webServer', 'connection', 'tools']
 
 export function apply(ctx) {
@@ -756,12 +756,12 @@ export function apply(ctx) {
         json(res, err.status || 500, { error: err.message })
       }
     },
-  }), '@modern/dsh-media-workbench: routes')
+  }), '@exccoder/dsh-media-workbench: routes')
 
   ctx.effect(() => () => {
     for (const controller of jobs.values()) controller.abort()
     for (const controller of graphJobs.values()) controller.abort()
-  }, '@modern/dsh-media-workbench: abort jobs')
+  }, '@exccoder/dsh-media-workbench: abort jobs')
 
   applyTools(ctx, { store, settings, saveImageBuffer, createVideo, runGraph, saveDocument, templateGraph, BASE, ready })
 }

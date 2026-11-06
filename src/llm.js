@@ -30,7 +30,7 @@ export async function streamText(ctx, { system, user, maxTokens = 4000, signal, 
     for await (const chunk of call.stream({
       ...call.config,
       system,
-      messages: [{ role: 'user', content: [{ type: 'text', text: user }], source: { kind: '@modern/dsh-media-workbench' } }],
+      messages: [{ role: 'user', content: [{ type: 'text', text: user }], source: { kind: '@exccoder/dsh-media-workbench' } }],
       signal,
     })) {
       if (chunk.type === 'text-delta') {
