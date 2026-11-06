@@ -1,0 +1,4 @@
+# @modern/dsh-media-workbench bundle patch：host 半片 + 浏览器半片
+- insert:
+    - id: media-workbench-modern
+      name: '@modern/dsh-media-workbench'

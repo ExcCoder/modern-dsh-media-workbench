@@ -1,0 +1,244 @@
+import { api } from '../lib/api.js'
+import { $, esc } from '../lib/dom.js'
+import { icon } from '../lib/icons.js'
+import { app, t } from '../lib/state.js'
+
+export function mount(root) {
+  const settings = app.settings ?? {}
+  const image = settings.image ?? {}
+  const video = settings.video ?? {}
+  let testImage = ''
+  let busy = false
+
+  root.innerHTML = `
+    <section class="bench bench-settings">
+      <div class="settings-scroll">
+        <header class="settings-hero">
+          <span class="eyebrow">${esc(t('工作台设置', 'WORKBENCH SETTINGS'))}</span>
+          <h2>${esc(t('把接口接上，其余都在本机', 'Connect providers. Everything else stays local.'))}</h2>
+          <p>${esc(t('写作走 DSH 当前模型，不需要在这里填密钥；生图和视频各自填写自己的接口。密钥只保存在本机 settings.json（权限 600），不会回传给浏览器。', 'Writing uses the current DSH model. Image and video providers each have their own endpoint. Keys stay in a local settings.json (mode 600) and are never sent back to the browser.'))}</p>
+        </header>
+
+        <section class="settings-card" id="image-card">
+          <header class="settings-head">
+            <div class="settings-title"><span class="settings-ic" style="--c:#8a6fd1">${icon('image', 18)}</span><div><h3>${esc(t('生图服务', 'Image provider'))}</h3><p>${esc(t('兼容 OpenAI Images API：POST /images/generations，参考图走 /images/edits。', 'OpenAI Images compatible: POST /images/generations, edits at /images/edits.'))}</p></div></div>
+            <span class="ready-pill ${settings.imageReady ? 'is-ok' : 'is-off'}" id="image-ready"><i></i>${settings.imageReady ? t('已就绪', 'Ready') : t('未配置', 'Not set')}</span>
+          </header>
+          <div class="settings-grid">
+            <label class="field"><span class="field-label">${esc(t('服务预设', 'Preset'))}</span>
+              <select class="select" id="image-preset">${(app.imagePresets ?? []).map(p => `<option value="${p.id}" ${p.id === image.preset ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+            </label>
+            <label class="field"><span class="field-label">${esc(t('接口地址', 'Base URL'))}</span>
+              <input class="input" id="image-base" value="${esc(image.baseUrl ?? '')}" placeholder="https://api.openai.com/v1" spellcheck="false">
+            </label>
+            <label class="field"><span class="field-label">${esc(t('模型', 'Model'))}</span>
+              <input class="input" id="image-model" value="${esc(image.model ?? '')}" placeholder="gpt-image-1" spellcheck="false">
+            </label>
+            <label class="field"><span class="field-label">${esc(t('密钥', 'API key'))}</span>
+              <input class="input" id="image-key" type="password" autocomplete="off" placeholder="${image.hasKey ? esc(t('已保存（尾号 ', 'Saved (ends ') + esc(image.keyHint ?? '') + '）') : 'sk-…'}">
+            </label>
+            <label class="field"><span class="field-label">${esc(t('默认尺寸', 'Default size'))}</span>
+              <input class="input" id="image-size" value="${esc(image.size ?? '')}" placeholder="1024x1024" spellcheck="false">
+            </label>
+            <label class="field"><span class="field-label">${esc(t('质量', 'Quality'))}</span>
+              <input class="input" id="image-quality" value="${esc(image.quality ?? '')}" placeholder="auto / high" spellcheck="false">
+            </label>
+            <label class="field field-wide"><span class="field-label">${esc(t('附加参数 JSON', 'Extra JSON'))}</span>
+              <textarea id="image-extra" rows="2" spellcheck="false" placeholder='{"response_format":"b64_json"}'>${esc(image.extra ?? '')}</textarea>
+            </label>
+          </div>
+          <footer class="settings-actions">
+            <span class="fine">${image.hasKey ? esc(t('密钥已存在，留空表示不修改。', 'A key exists; leave blank to keep it.')) : esc(t('还没有密钥。', 'No key yet.'))}</span>
+            <span class="spacer"></span>
+            ${image.hasKey ? `<button class="text-btn danger-quiet" id="image-clear-key">${esc(t('清除密钥', 'Clear key'))}</button>` : ''}
+            <button class="btn btn-small btn-ghost" id="image-test">${esc(t('试画一张', 'Test image'))}</button>
+            <button class="btn btn-small btn-primary" id="image-save">${esc(t('保存', 'Save'))}</button>
+          </footer>
+          <div class="test-result" id="test-result" hidden><img id="test-img" alt=""><span>${esc(t('接口通了。', 'The provider works.'))}</span></div>
+        </section>
+
+        <section class="settings-card" id="video-card">
+          <header class="settings-head">
+            <div class="settings-title"><span class="settings-ic" style="--c:#3f8f92">${icon('film', 18)}</span><div><h3>${esc(t('视频服务', 'Video provider'))}</h3><p>${esc(t('异步任务接口：POST 创建任务，轮询状态，完成后下载。', 'Async task API: POST to create, poll status, download when done.'))}</p></div></div>
+            <span class="ready-pill ${settings.videoReady ? 'is-ok' : 'is-off'}" id="video-ready"><i></i>${settings.videoReady ? t('已就绪', 'Ready') : t('未配置', 'Not set')}</span>
+          </header>
+          <div class="settings-grid">
+            <label class="field"><span class="field-label">${esc(t('服务预设', 'Preset'))}</span>
+              <select class="select" id="video-preset">${(app.videoPresets ?? []).map(p => `<option value="${p.id}" ${p.id === video.preset ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+            </label>
+            <label class="field"><span class="field-label">${esc(t('接口地址', 'Base URL'))}</span>
+              <input class="input" id="video-base" value="${esc(video.baseUrl ?? '')}" placeholder="https://api.openai.com/v1" spellcheck="false">
+            </label>
+            <label class="field"><span class="field-label">${esc(t('模型', 'Model'))}</span>
+              <input class="input" id="video-model" value="${esc(video.model ?? '')}" placeholder="sora-2" spellcheck="false">
+            </label>
+            <label class="field"><span class="field-label">${esc(t('密钥', 'API key'))}</span>
+              <input class="input" id="video-key" type="password" autocomplete="off" placeholder="${video.hasKey ? esc(t('已保存（尾号 ', 'Saved (ends ') + esc(video.keyHint ?? '') + '）') : 'sk-…'}">
+            </label>
+            <label class="field"><span class="field-label">${esc(t('创建路径', 'Create path'))}</span><input class="input" id="video-create" value="${esc(video.createPath ?? '/videos')}" spellcheck="false"></label>
+            <label class="field"><span class="field-label">${esc(t('状态路径', 'Status path'))}</span><input class="input" id="video-status" value="${esc(video.statusPath ?? '/videos/{id}')}" spellcheck="false"></label>
+            <label class="field"><span class="field-label">${esc(t('内容路径', 'Content path'))}</span><input class="input" id="video-content" value="${esc(video.contentPath ?? '/videos/{id}/content')}" spellcheck="false"></label>
+            <label class="field"><span class="field-label">${esc(t('首帧字段名', 'Image field'))}</span><input class="input" id="video-field" value="${esc(video.imageField ?? 'image')}" spellcheck="false"></label>
+            <label class="field field-wide"><span class="field-label">${esc(t('附加参数 JSON', 'Extra JSON'))}</span><textarea id="video-extra" rows="2" spellcheck="false" placeholder='{"resolution":"1080p"}'>${esc(video.extra ?? '')}</textarea></label>
+          </div>
+          <footer class="settings-actions">
+            <span class="fine">${esc(t('没有视频服务时，视频工作台仍可用「分镜短片」模式。', 'Without a video provider, storyboard mode still works.'))}</span>
+            <span class="spacer"></span>
+            ${video.hasKey ? `<button class="text-btn danger-quiet" id="video-clear-key">${esc(t('清除密钥', 'Clear key'))}</button>` : ''}
+            <button class="btn btn-small btn-primary" id="video-save">${esc(t('保存', 'Save'))}</button>
+          </footer>
+        </section>
+
+        <section class="settings-card">
+          <header class="settings-head">
+            <div class="settings-title"><span class="settings-ic" style="--c:#b4833e">${icon('pen', 18)}</span><div><h3>${esc(t('写作模型', 'Writing model'))}</h3><p>${esc(t('使用 DSH 当前默认模型；在 DSH 的模型选择里切换。', 'Uses the current DSH default model; switch it in DSH.'))}</p></div></div>
+            <span class="ready-pill ${app.model ? 'is-ok' : 'is-off'}"><i></i>${app.model ? esc(app.model.label) : t('未连接', 'Not connected')}</span>
+          </header>
+        </section>
+
+        <section class="settings-card">
+          <header class="settings-head">
+            <div class="settings-title"><span class="settings-ic" style="--c:#6b7280">${icon('folder', 18)}</span><div><h3>${esc(t('本机数据', 'Local data'))}</h3><p>${esc(t('作品、图片、视频和星图都在这个目录，不上传云端。', 'Works, images, videos and star maps live here. Nothing is uploaded.'))}</p></div></div>
+          </header>
+          <div class="data-path"><code id="data-path">${esc(app.dataDir)}</code><button class="text-btn" id="copy-path">${icon('copy', 13)}${esc(t('复制路径', 'Copy path'))}</button></div>
+          <div class="settings-actions wrap">
+            <button class="btn btn-small btn-ghost" id="export-all">${icon('download', 14)}${esc(t('导出全部数据', 'Export all data'))}</button>
+            <button class="btn btn-small btn-ghost" id="clear-images">${esc(t('清空图片记录', 'Clear images'))}</button>
+            <button class="btn btn-small btn-ghost" id="clear-videos">${esc(t('清空视频记录', 'Clear videos'))}</button>
+            <button class="btn btn-small btn-ghost danger-quiet" id="clear-all">${esc(t('清空全部记录', 'Clear everything'))}</button>
+          </div>
+        </section>
+
+        <section class="settings-card about-card">
+          <div class="about-mark">${icon('spark', 22)}</div>
+          <div>
+            <h3>${esc(t('摩登-媒体工作室', 'Modern-MediaStudio'))} <span class="version">v${esc(app.version)}</span></h3>
+            <p>${esc(t('一个 DSH 插件：生图、写作、星图、视频四个工作台，作品留在本机。按 ', 'A DSH plugin with four benches: image, writing, star map and video. Press '))}<kbd>${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}</kbd> + <kbd>,</kbd> ${esc(t('打开设置。', 'to open settings.'))}</p>
+          </div>
+        </section>
+      </div>
+    </section>
+  `
+
+  const field = id => $('#' + id)
+
+  // 预设联动
+  field('image-preset').addEventListener('change', () => {
+    const preset = (app.imagePresets ?? []).find(p => p.id === field('image-preset').value)
+    if (preset?.baseUrl) field('image-base').value = preset.baseUrl
+    if (preset?.model) field('image-model').value = preset.model
+  })
+  field('video-preset').addEventListener('change', () => {
+    const preset = (app.videoPresets ?? []).find(p => p.id === field('video-preset').value)
+    if (preset?.baseUrl) field('video-base').value = preset.baseUrl
+    if (preset?.model) field('video-model').value = preset.model
+  })
+
+  async function saveImage() {
+    if (busy) return
+    busy = true
+    try {
+      const data = await api('settings', {
+        image: {
+          preset: field('image-preset').value,
+          baseUrl: field('image-base').value,
+          model: field('image-model').value,
+          size: field('image-size').value,
+          quality: field('image-quality').value,
+          extra: field('image-extra').value,
+          apiKey: field('image-key').value,
+        },
+      })
+      app.settings = data.settings
+      field('image-key').value = ''
+      app.toast(t('生图设置已保存', 'Image settings saved'), 'success')
+      await app.refresh()
+    } catch (err) { app.toast(err.message, 'error') }
+    finally { busy = false }
+  }
+
+  async function saveVideo() {
+    if (busy) return
+    busy = true
+    try {
+      const data = await api('settings', {
+        video: {
+          preset: field('video-preset').value,
+          baseUrl: field('video-base').value,
+          model: field('video-model').value,
+          createPath: field('video-create').value,
+          statusPath: field('video-status').value,
+          contentPath: field('video-content').value,
+          imageField: field('video-field').value,
+          extra: field('video-extra').value,
+          apiKey: field('video-key').value,
+        },
+      })
+      app.settings = data.settings
+      field('video-key').value = ''
+      app.toast(t('视频设置已保存', 'Video settings saved'), 'success')
+      await app.refresh()
+    } catch (err) { app.toast(err.message, 'error') }
+    finally { busy = false }
+  }
+
+  field('image-save').addEventListener('click', saveImage)
+  field('video-save').addEventListener('click', saveVideo)
+
+  field('image-clear-key')?.addEventListener('click', async () => {
+    try {
+      const data = await api('settings', { image: { clearKey: true } })
+      app.settings = data.settings
+      app.toast(t('已清除生图密钥', 'Image key cleared'), 'success')
+      await app.refresh()
+    } catch (err) { app.toast(err.message, 'error') }
+  })
+  field('video-clear-key')?.addEventListener('click', async () => {
+    try {
+      const data = await api('settings', { video: { clearKey: true } })
+      app.settings = data.settings
+      app.toast(t('已清除视频密钥', 'Video key cleared'), 'success')
+      await app.refresh()
+    } catch (err) { app.toast(err.message, 'error') }
+  })
+
+  field('image-test').addEventListener('click', async () => {
+    if (busy) return
+    if (!field('image-key').value && !app.settings?.image?.hasKey) return app.toast(t('先填密钥并保存', 'Add a key and save first'), 'error')
+    busy = true
+    const btn = field('image-test')
+    btn.textContent = t('正在画…', 'Drawing…')
+    try {
+      const data = await api('settings/test-image', {})
+      testImage = data.url
+      field('test-result').hidden = false
+      field('test-img').src = testImage
+      app.toast(t('接口通了', 'Provider works'), 'success')
+    } catch (err) { app.toast(err.message, 'error') }
+    finally { busy = false; btn.textContent = t('试画一张', 'Test image') }
+  })
+
+  field('copy-path').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(app.dataDir); app.toast(t('路径已复制', 'Path copied'), 'success') } catch { app.toast(t('复制失败', 'Copy failed'), 'error') }
+  })
+
+  field('export-all').addEventListener('click', () => { location.href = '/media-workbench-modern/api/export' })
+
+  async function clearScope(scope) {
+    const label = { images: t('图片记录', 'image records'), videos: t('视频记录', 'video records'), all: t('全部记录', 'all records') }[scope]
+    const ok = await app.confirm({ title: t('清空', 'Clear ') + label + '？', message: t('文件会留在本机目录，但工作台里不再显示。', 'Files stay on disk; the workbench stops listing them.'), confirmText: t('清空', 'Clear'), danger: true })
+    if (!ok) return
+    try {
+      await api('clear', { scope })
+      await app.refresh()
+      app.toast(t('已清空', 'Cleared'), 'success')
+    } catch (err) { app.toast(err.message, 'error') }
+  }
+  field('clear-images').addEventListener('click', () => clearScope('images'))
+  field('clear-videos').addEventListener('click', () => clearScope('videos'))
+  field('clear-all').addEventListener('click', () => clearScope('all'))
+
+  return {
+    update() { /* 设置页不跟随轮询刷新，避免覆盖正在编辑的值 */ },
+  }
+}

@@ -1,0 +1,63 @@
+// 浏览器端的节点契约（与 host src/graph.js 保持一致）
+export const NODE_TYPES = {
+  prompt: {
+    label: '提示词',
+    icon: 'spark',
+    color: '#d97757',
+    hint: '一句话，流程的起点',
+    inputs: [],
+    outputs: [{ id: 'text', type: 'text' }],
+    defaults: { text: '' },
+  },
+  write: {
+    label: '灵感写作',
+    icon: 'pen',
+    color: '#b4833e',
+    hint: '扩写、改写、旁白',
+    inputs: [{ id: 'context', type: 'text', multi: true }],
+    outputs: [{ id: 'text', type: 'text' }],
+    defaults: { instruction: '根据上面的提示，写一段有画面感的文字', tone: '自然叙述', length: 'short' },
+  },
+  image: {
+    label: '图像生成',
+    icon: 'image',
+    color: '#8a6fd1',
+    hint: '文字或参考图 → 画面',
+    inputs: [
+      { id: 'prompt', type: 'text', multi: true },
+      { id: 'reference', type: 'image' },
+    ],
+    outputs: [{ id: 'image', type: 'image' }],
+    defaults: { style: '电影感', ratio: '16:9', prompt: '' },
+  },
+  video: {
+    label: '视频生成',
+    icon: 'film',
+    color: '#3f8f92',
+    hint: '首帧或文字 → 动态',
+    inputs: [
+      { id: 'prompt', type: 'text', multi: true },
+      { id: 'first', type: 'image' },
+    ],
+    outputs: [{ id: 'video', type: 'video' }],
+    defaults: { duration: 5, ratio: '16:9', mode: 'auto', prompt: '' },
+  },
+  preview: {
+    label: '作品预览',
+    icon: 'eye',
+    color: '#6b7280',
+    hint: '把结果摆出来',
+    inputs: [{ id: 'media', type: 'media', multi: true }],
+    outputs: [],
+    defaults: {},
+  },
+  note: {
+    label: '便签',
+    icon: 'note',
+    color: '#a8935b',
+    hint: '记录意图，不参与运行',
+    inputs: [],
+    outputs: [],
+    defaults: { text: '' },
+  },
+}

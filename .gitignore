@@ -1,0 +1,9 @@
+node_modules/
+.refs/
+.dev-home/
+.dsh-test/
+.shots/
+release/
+*.tgz
+*.zip
+*.tar.gz
