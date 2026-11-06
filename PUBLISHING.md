@@ -14,7 +14,7 @@ Check that the package contains only `src/`, `lib/`, `web/`, `docs/`, the patch 
 The npm name `@modern/dsh-media-workbench` was available on 2026-11-07. Verify again before publishing:
 
 ```bash
-npm view @modern/dsh-media-workbench version
+npm view @modern/dsh-media-workbench version --registry=https://registry.npmjs.org
 ```
 
 If it is taken, either rename the package and `cordis.patch.yml` `name`, or publish under another scope such as `@your-scope/dsh-media-workbench`.
@@ -50,10 +50,14 @@ Then in the repository settings:
 
 ## 4. Publish to npm
 
+This machine's default npm registry is `https://registry.npmmirror.com/`, which is a read-only mirror. Publishing must explicitly use the official registry:
+
 ```bash
-npm login
-npm publish --access public
+npm login --registry=https://registry.npmjs.org
+npm publish --access public --registry=https://registry.npmjs.org
 ```
+
+If the browser login does not open, run `npm login --auth-type=web --registry=https://registry.npmjs.org` and open the printed URL. Do not paste the password, token or one-time code into chat.
 
 The package has no runtime dependencies, so the tarball is around 300 KB (mostly screenshots).
 
