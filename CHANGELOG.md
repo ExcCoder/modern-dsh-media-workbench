@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2026-11-07
+
+Removed external inspiration attribution and the legacy data-directory migration from earlier prototypes. The four workbenches are unchanged.
+
 ## [0.1.2] - 2026-11-07
 
 First npm publication as **@exccoder/dsh-media-workbench**. The package was renamed from the `@modern` scope before publishing; there are no functional changes since 0.1.1. The GitHub `v0.1.1` release is superseded by `v0.1.2`.
@@ -13,7 +17,6 @@ Initial GitHub release under `@modern/dsh-media-workbench`; not published to npm
 ### Added
 
 - Package name `@modern/dsh-media-workbench`, sidebar title「摩登-媒体工作室」with the English label `Modern-MediaStudio`, following the DSH locale.
-- One-time migration from the earlier prototype directory `$DSH_HOME/levelup-workbench/` into `$DSH_HOME/media-workbench-modern/`; the old directory is kept as a backup.
 - **Image Studio**: prompt, negative prompt, nine style presets, six aspect ratios, 1–4 images, reference-image editing through `/images/edits`, favorites, search, history, lightbox, retry/download/reuse.
 - **Writing Studio**: local document library, autosave, Markdown export, selection-aware continue/polish/expand/rewrite/outline/title actions, streaming output with stop/apply/discard.
 - **Star Map**: typed node graph (prompt, writing, image, video, preview, note), drag-to-connect ports, type/single-input/cycle validation, topological parallel execution, run-to-node, undo/redo, templates, user blueprints, JSON import/export, responsive inspector.

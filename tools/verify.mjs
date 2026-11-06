@@ -2,13 +2,13 @@
 // 运行：node --test tools/verify.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, mkdir, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   canConnect, dependencyClosure, normalizeGraph, templateGraph, topoWaves, createNode, NODE_TYPES,
 } from '../src/graph.js'
-import { migrateLegacyData, normalizeState, Store } from '../src/store.js'
+import { normalizeState, Store } from '../src/store.js'
 import { imageReady, publicSettings, Settings, videoReady } from '../src/settings.js'
 import { styledPrompt } from '../src/image.js'
 import { writingPrompts, cleanOutput } from '../src/writing.js'
@@ -99,25 +99,6 @@ test('本机存储可以读写，并把中断的任务标记出来', async () =>
     const after = await store.read()
     assert.equal(after.images[0].status, 'error')
     assert.match(after.images[0].error, /中断/)
-  })
-})
-
-test('改名后会把旧目录数据复制到新目录', async () => {
-  await withTemp(async root => {
-    const legacy = join(root, 'levelup-workbench')
-    await mkdir(join(legacy, 'files'), { recursive: true })
-    await writeFile(join(legacy, 'state.json'), JSON.stringify({ version: 1, images: [] }))
-    await writeFile(join(legacy, 'settings.json'), JSON.stringify({ image: { apiKey: 'sk-old-test' } }))
-    await writeFile(join(legacy, 'files', 'a.txt'), 'hello')
-    const env = { ...process.env, DSH_HOME: root }
-    const target = join(root, 'media-workbench-modern')
-
-    assert.equal(await migrateLegacyData(target, env), true)
-    assert.equal(await readFile(join(target, 'settings.json'), 'utf8'), JSON.stringify({ image: { apiKey: 'sk-old-test' } }))
-    assert.equal(await readFile(join(target, 'files', 'a.txt'), 'utf8'), 'hello')
-    await stat(join(target, '.migrated-from'))
-    // 已经迁移过就不再覆盖
-    assert.equal(await migrateLegacyData(target, env), false)
   })
 })
 

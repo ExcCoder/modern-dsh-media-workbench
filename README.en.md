@@ -9,8 +9,6 @@ A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) plug
 
 Writing uses DSH's currently selected model. Image and video providers are configured separately. All works, images, videos and Star Maps stay on this machine. The UI is available in Chinese and English and follows DSH's language and light/dark theme.
 
-Inspired by the creative space in [LevelUpAgent](https://github.com/TippingGame/LevelUpAgent); this is an original implementation for DSH's plugin system.
-
 [中文说明](README.md)
 
 ## Install
@@ -62,7 +60,6 @@ No extra key. Writing uses the model selected in DSH. The plugin does not store 
   - `state.json` — images, videos, documents, Star Maps, blueprints
   - `settings.json` — provider endpoints, model names and keys, mode `600`
   - `files/` — generated media and uploaded references
-- If an earlier build used the old directory `~/.dsh/levelup-workbench/`, its settings, works and files are copied once into the new directory on first start. The old directory is kept as a backup and can be deleted after verification.
 - Provider keys never reach the browser; the UI only receives `hasKey` and the last four characters.
 - Write routes validate the DSH connection service and same-origin headers. Static files are whitelisted. Generated files use a strict name pattern.
 - Remote image/video URLs are checked before download; loopback, private, link-local and metadata addresses are rejected.

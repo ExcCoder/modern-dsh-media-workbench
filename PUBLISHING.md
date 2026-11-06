@@ -1,4 +1,4 @@
-# Publishing
+﻿# Publishing
 
 This repository is ready to publish as an npm package and as a GitHub repository. Replace `<you>` with your GitHub account or organisation.
 
@@ -38,7 +38,7 @@ git clone https://github.com/ExcCoder/modern-dsh-media-workbench.git
 cd modern-dsh-media-workbench
 # copy the plugin source into this directory
 git add .
-git commit -m "release: v0.1.2"
+git commit -m "release: v0.1.3"
 git push origin master
 ```
 
@@ -71,11 +71,11 @@ Users must fully restart DSH after installing a new plugin.
 
 ## 5. Create a GitHub release
 
-Use the version as the tag (`v0.1.2`), copy the matching section of `CHANGELOG.md` into the release notes, and attach the artifacts from `release/`:
+Use the version as the tag (`v0.1.3`), copy the matching section of `CHANGELOG.md` into the release notes, and attach the artifacts from `release/`:
 
-- `exccoder-dsh-media-workbench-0.1.2.tgz`
-- `exccoder-dsh-media-workbench-0.1.2-source.zip`
-- `exccoder-dsh-media-workbench-0.1.2-source.tar.gz`
+- `exccoder-dsh-media-workbench-0.1.3.tgz`
+- `exccoder-dsh-media-workbench-0.1.3-source.zip`
+- `exccoder-dsh-media-workbench-0.1.3-source.tar.gz`
 - `SHA256SUMS.txt`
 
 ## 6. Release checklist

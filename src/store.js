@@ -1,5 +1,5 @@
 // 本机持久化：$DSH_HOME/media-workbench-modern/state.json
-import { chmod, cp, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { templateGraph } from './graph.js'
@@ -8,48 +8,6 @@ export const STATE_VERSION = 1
 
 export function dshHome(env = process.env) {
   return env.DSH_HOME || join(homedir(), '.dsh')
-}
-
-/** 改名前的旧目录，只用于一次性迁移 */
-export function legacyRoot(env = process.env) {
-  return join(dshHome(env), 'levelup-workbench')
-}
-
-/**
- * 从旧插件目录复制一次数据（settings / state / files）。
- * 旧目录保留作备份；新目录已经有 state.json 时不再迁移。
- * @returns {Promise<boolean>} 是否执行了迁移
- */
-export async function migrateLegacyData(root, env = process.env) {
-  const legacy = legacyRoot(env)
-  if (root === legacy) return false
-  try {
-    await stat(join(root, 'state.json'))
-    return false
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw err
-  }
-  try {
-    await stat(join(legacy, 'state.json'))
-  } catch (err) {
-    if (err.code === 'ENOENT') return false
-    throw err
-  }
-  await mkdir(root, { recursive: true })
-  // 先素材、再设置、最后 state：中途失败时下次还能重试
-  for (const name of ['files', 'settings.json', 'state.json']) {
-    const target = join(root, name)
-    try {
-      await stat(target)
-      continue
-    } catch (err) {
-      if (err.code !== 'ENOENT') throw err
-    }
-    await cp(join(legacy, name), target, { recursive: true, force: false, errorOnExist: false })
-  }
-  await writeFile(join(root, '.migrated-from'), `${legacy}\n`, { mode: 0o600 })
-  await chmod(join(root, 'settings.json'), 0o600).catch(() => {})
-  return true
 }
 
 const WELCOME = `写作不是一次成形的。

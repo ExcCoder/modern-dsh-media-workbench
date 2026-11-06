@@ -9,8 +9,6 @@
 
 写作走 DSH 当前默认模型；生图和视频各自配置自己的接口。作品、图片、视频、星图都留在本机，不上传云端。界面支持中文 / English，并跟随 DSH 的语言和明暗主题。
 
-灵感来自 [LevelUpAgent](https://github.com/TippingGame/LevelUpAgent) 的创作空间，按 DSH 的插件体系重新实现。
-
 GitHub：[ExcCoder/modern-dsh-media-workbench](https://github.com/ExcCoder/modern-dsh-media-workbench)
 
 ## 界面
@@ -96,7 +94,6 @@ dsh plugin --profile desktop add /absolute/path/to/dsh-media-workbench
   - `state.json`：图片/视频记录、写作文档、星图、蓝图
   - `settings.json`：接口地址、模型、密钥，权限 `600`
   - `files/`：生成的图片、视频和上传的参考图
-- 如果之前装过旧名字的版本，第一次启动会把 `~/.dsh/levelup-workbench/` 里的设置、作品和素材复制一次到新目录；旧目录保留作备份，确认无误后可自行删除。
 - 密钥只存在本机，返回浏览器时只给「有没有密钥」和尾四位。
 - 所有写接口校验同源与 DSH 登录凭据；静态文件只服务 `web/` 白名单；文件下载只接受 `files/` 下的安全文件名。
 - 下载远端图片/视频前会拒绝本机、内网和云元数据地址，避免 SSRF。
@@ -134,8 +131,6 @@ tools/        本地预览和离线验证脚本
 - 参与开发：[CONTRIBUTING.md](CONTRIBUTING.md)。
 - 发布到 npm / GitHub 的步骤：[PUBLISHING.md](PUBLISHING.md)。
 - npm 包名 `@exccoder/dsh-media-workbench` 使用 npm 账号 `exccoder` 的用户 scope，发布不需要组织权限；改用其他 scope 时需要同步四处包名，见 [PUBLISHING.md](PUBLISHING.md)。
-
-本项目的代码是原创实现；产品灵感来自 LevelUpAgent 的创作空间，未复制其源码或素材。
 
 ## 许可
 

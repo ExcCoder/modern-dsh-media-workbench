@@ -8,7 +8,7 @@ import { apply as applyTools } from './tools.js'
 import { generateImage } from './image.js'
 import { modelInfo, streamText } from './llm.js'
 import { imageReady, IMAGE_PRESETS, publicSettings, Settings, VIDEO_PRESETS, videoReady } from './settings.js'
-import { Store, migrateLegacyData } from './store.js'
+import { Store } from './store.js'
 import { clampInt, extensionOf, fail, imageSize, json, newId, readBuffer, readJson, safeJoin, sendFile, videoExtensionOf } from './util.js'
 import { generateStoryboard, generateVideo } from './video.js'
 import { cleanOutput, writingPrompts } from './writing.js'
@@ -16,7 +16,7 @@ import { cleanOutput, writingPrompts } from './writing.js'
 const ROOT = dirname(fileURLToPath(import.meta.url))
 const WEB_DIR = join(ROOT, '..', 'web')
 const BASE = '/media-workbench-modern'
-const VERSION = '0.1.2'
+const VERSION = '0.1.3'
 
 const STATIC = new Map([
   ['', 'index.html'],
@@ -55,14 +55,7 @@ export function apply(ctx) {
   const graphJobs = new Map()
   let settled = false
 
-  // 第一次改名后，把旧目录的数据复制一次；不阻塞页面静态资源
-  const ready = migrateLegacyData(store.root).catch(err => {
-    console.warn('[media-workbench-modern] legacy data migration failed:', err.message)
-    return false
-  })
-
   const settleOnce = async () => {
-    await ready
     if (settled) return
     settled = true
     await store.settle().catch(() => {})
@@ -763,7 +756,7 @@ export function apply(ctx) {
     for (const controller of graphJobs.values()) controller.abort()
   }, '@exccoder/dsh-media-workbench: abort jobs')
 
-  applyTools(ctx, { store, settings, saveImageBuffer, createVideo, runGraph, saveDocument, templateGraph, BASE, ready })
+  applyTools(ctx, { store, settings, saveImageBuffer, createVideo, runGraph, saveDocument, templateGraph, BASE })
 }
 
 export { BASE }
