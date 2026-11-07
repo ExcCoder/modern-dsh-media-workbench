@@ -1,4 +1,4 @@
-﻿# Publishing
+# Publishing
 
 This repository is ready to publish as an npm package and as a GitHub repository. Replace `<you>` with your GitHub account or organisation.
 

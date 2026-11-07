@@ -1,4 +1,4 @@
-﻿// @exccoder/dsh-media-workbench · host 入口
+// @exccoder/dsh-media-workbench · host 入口
 // 四个工作台共用一套本机存储：生图 / 视频 / 写作 / 星图
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
