@@ -64,6 +64,25 @@ function progressOf(data) {
   return Math.max(0, Math.min(100, n <= 1 ? Math.round(n * 100) : Math.round(n)))
 }
 
+function sameSite(a, b) {
+  try {
+    const ha = new URL(a).hostname.toLowerCase()
+    const hb = new URL(b).hostname.toLowerCase()
+    return ha === hb || ha.endsWith(`.${hb}`) || hb.endsWith(`.${ha}`)
+  } catch {
+    return false
+  }
+}
+
+async function fetchRemoteVideo(url, settings, key, signal) {
+  let res = await fetch(url, { signal })
+  if (!res.ok && (res.status === 401 || res.status === 403) && sameSite(url, settings.video.baseUrl)) {
+    await res.body?.cancel().catch(() => {})
+    res = await fetch(url, { headers: { authorization: `Bearer ${key}` }, signal })
+  }
+  return res
+}
+
 async function fetchVideoContent(settings, key, id, signal) {
   const path = settings.video.contentPath.replace('{id}', encodeURIComponent(id))
   const res = await fetch(`${settings.video.baseUrl}${path}`, { headers: { authorization: `Bearer ${key}` }, signal })
@@ -164,9 +183,16 @@ export async function generateVideo(settings, record, { signal, filesDir, onProg
   const url = findUrl(final)
   if (url) {
     const remote = assertRemoteUrl(url)
-    const download = await fetch(remote, { signal: combined })
-    if (!download.ok) throw new Error(`下载视频失败（${download.status}）`)
-    buffer = Buffer.from(await download.arrayBuffer())
+    const download = await fetchRemoteVideo(remote, settings, key, combined)
+    if (download.ok) {
+      buffer = Buffer.from(await download.arrayBuffer())
+    } else if (id && settings.video.contentPath) {
+      // 有些网关返回的下载地址需要额外鉴权或已经过期，回退到内容的官方路径。
+      await download.body?.cancel().catch(() => {})
+      buffer = await fetchVideoContent(settings, key, id, combined)
+    } else {
+      throw new Error(`下载视频失败（${download.status}）`)
+    }
   } else if (id && settings.video.contentPath) {
     buffer = await fetchVideoContent(settings, key, id, combined)
   }

@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.1.4] - 2026-11-07
+
+Fixed video downloads that returned 401 from gateways which require the same Bearer token on the media URL. The downloader now retries the provider URL with authentication and falls back to the configured content endpoint.
+
 ## [0.1.3] - 2026-11-07
 
 Removed external inspiration attribution and the legacy data-directory migration from earlier prototypes. The four workbenches are unchanged.

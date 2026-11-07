@@ -2,6 +2,7 @@
 // 运行：node --test tools/verify.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,6 +13,7 @@ import { normalizeState, Store } from '../src/store.js'
 import { imageReady, publicSettings, Settings, videoReady } from '../src/settings.js'
 import { styledPrompt } from '../src/image.js'
 import { writingPrompts, cleanOutput } from '../src/writing.js'
+import { generateVideo } from '../src/video.js'
 import { assertRemoteUrl, extensionOf, imageSize } from '../src/util.js'
 
 async function withTemp(fn) {
@@ -174,3 +176,47 @@ test('节点类型与端口契约完整', () => {
     assert.ok(node.id.startsWith('n_'))
   }
 })
+
+test('视频下载遇到 401 时会带 Bearer 重试', async () => {
+  const realFetch = globalThis.fetch
+  let downloads = 0
+  globalThis.fetch = async (url, init = {}) => {
+    if (init.method === 'POST') {
+      return new Response(JSON.stringify({
+        id: 'task_1',
+        status: 'completed',
+        url: 'https://example.com/video.mp4',
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    if (String(url) === 'https://example.com/video.mp4') {
+      downloads += 1
+      if (init.headers?.authorization === 'Bearer test-key') {
+        return new Response('fake-mp4', { status: 200 })
+      }
+      return new Response('unauthorized', { status: 401 })
+    }
+    return new Response('not found', { status: 404 })
+  }
+  const settings = {
+    video: {
+      apiKey: 'test-key',
+      baseUrl: 'https://example.com',
+      model: 'test-model',
+      createPath: '/videos',
+      statusPath: '/videos/{id}',
+      contentPath: '/videos/{id}/content',
+      imageField: 'image',
+      extra: '',
+    },
+  }
+  try {
+    const result = await generateVideo(settings, {
+      prompt: 'test', aspect: '16:9', duration: 5, reference: '',
+    })
+    assert.equal(downloads, 2)
+    assert.equal(result.buffer.toString(), 'fake-mp4')
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
