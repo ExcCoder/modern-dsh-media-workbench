@@ -3,7 +3,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -11,7 +11,7 @@ import {
 } from '../src/graph.js'
 import { normalizeState, Store } from '../src/store.js'
 import { imageReady, publicSettings, Settings, videoReady } from '../src/settings.js'
-import { styledPrompt } from '../src/image.js'
+import { styledPrompt, generateImage } from '../src/image.js'
 import { writingPrompts, cleanOutput } from '../src/writing.js'
 import { generateVideo } from '../src/video.js'
 import { assertRemoteUrl, extensionOf, imageSize } from '../src/util.js'
@@ -76,13 +76,14 @@ test('导入星图会修掉悬空、成环与不存在的节点', () => {
 
 test('状态归一化会补默认值、清掉坏记录', () => {
   const state = normalizeState({
-    images: [{ id: 'a', status: 'weird' }, { nope: true }, null],
+    images: [{ id: 'a', status: 'weird', references: ['r1.png', 'r2.png'] }, { nope: true }, null],
     docs: [{ id: 'd1', title: 'x' }],
     graphs: [{ id: 'g', name: 'g', nodes: [], edges: [] }],
     preferences: { imageCount: 9 },
   })
   assert.equal(state.images.length, 1)
   assert.equal(state.images[0].status, 'done')
+  assert.deepEqual(state.images[0].references, ['r1.png', 'r2.png'])
   assert.equal(state.docs.length, 1)
   assert.equal(state.graphs.length, 1)
   assert.equal(state.preferences.imageCount, 9)
@@ -128,6 +129,54 @@ test('设置拒绝坏地址与非对象 JSON', async () => {
     const settings = new Settings(root)
     await assert.rejects(() => settings.update({ image: { baseUrl: 'ftp://x' } }), /http/)
     await assert.rejects(() => settings.update({ image: { extra: '[1,2]' } }), /对象|JSON/)
+  })
+})
+
+test('产物目录会创建、保存并拒绝相对路径', async () => {
+  await withTemp(async root => {
+    const settings = new Settings(root)
+    const dir = join(root, 'output')
+    const saved = await settings.update({ storage: { outputDir: dir } })
+    assert.equal(saved.storage.outputDir, dir)
+    assert.equal((await stat(dir)).isDirectory(), true)
+    await assert.rejects(() => settings.update({ storage: { outputDir: 'relative/path' } }), /绝对路径/)
+    const cleared = await settings.update({ storage: { outputDir: '' } })
+    assert.equal(cleared.storage.outputDir, '')
+  })
+})
+
+test('多张参考图会按顺序走 image[] 字段', async () => {
+  await withTemp(async dir => {
+    const png = Buffer.alloc(24)
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png)
+    png.writeUInt32BE(1, 16)
+    png.writeUInt32BE(1, 20)
+    for (const name of ['a.png', 'b.png', 'c.png']) await writeFile(join(dir, name), png)
+    const settings = {
+      image: { baseUrl: 'https://example.com', model: 'test-image', apiKey: 'key', extra: '', size: '', quality: '' },
+    }
+    const realFetch = globalThis.fetch
+    let count = 0
+    globalThis.fetch = async (url, init = {}) => {
+      if (String(url).endsWith('/images/edits')) {
+        count = init.body.getAll('image[]').length
+        return new Response(JSON.stringify({ data: [{ b64_json: png.toString('base64') }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      return new Response('not found', { status: 404 })
+    }
+    try {
+      const result = await generateImage(settings, {
+        prompt: '三个参考图按顺序融合',
+        references: ['a.png', 'b.png', 'c.png'],
+      }, { filesDir: dir })
+      assert.equal(count, 3)
+      assert.equal(result.ext, '.png')
+    } finally {
+      globalThis.fetch = realFetch
+    }
   })
 })
 

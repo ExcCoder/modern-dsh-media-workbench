@@ -1,5 +1,6 @@
 // 插件设置：接口地址、模型、密钥。密钥只留本机，返回浏览器时永远脱敏。
-import { chmod, readFile, rename, writeFile } from 'node:fs/promises'
+import { access, chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
 import { join } from 'node:path'
 
 export const IMAGE_PRESETS = [
@@ -37,6 +38,9 @@ const DEFAULTS = {
     extra: '',
   },
   language: 'auto',
+  storage: {
+    outputDir: '',
+  },
 }
 
 function trim(value, max = 300) {
@@ -64,6 +68,28 @@ function normalizePath(value, fallback, max = 200) {
     throw err
   }
   return text
+}
+
+function normalizeOutputDir(value) {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') {
+    const err = new Error('产物目录要是文本路径')
+    err.status = 400
+    throw err
+  }
+  let dir = value.trim()
+  if (/^[a-zA-Z]:[\\/]?$/.test(dir)) {
+    dir = `${dir.slice(0, 2)}\\`
+  } else {
+    dir = dir.replace(/[\\/]+$/, '')
+  }
+  if (!dir) return ''
+  if (!/^(?:[a-zA-Z]:[\\/]|\/)/.test(dir)) {
+    const err = new Error('产物目录要填绝对路径，例如 D:\\AI作品')
+    err.status = 400
+    throw err
+  }
+  return dir
 }
 
 function normalizeExtra(value) {
@@ -104,6 +130,7 @@ export class Settings {
         ...saved,
         image: { ...DEFAULTS.image, ...(saved.image ?? {}) },
         video: { ...DEFAULTS.video, ...(saved.video ?? {}) },
+        storage: { ...DEFAULTS.storage, ...(saved.storage ?? {}) },
       }
     } catch (err) {
       if (err.code !== 'ENOENT') throw err
@@ -143,6 +170,25 @@ export class Settings {
     if (videoExtra !== undefined) next.video.extra = videoExtra
     if (typeof video.apiKey === 'string' && video.apiKey.trim()) next.video.apiKey = video.apiKey.trim().slice(0, 500)
     if (video.clearKey === true) next.video.apiKey = ''
+
+    const storage = patch.storage ?? {}
+    const outputDir = normalizeOutputDir(storage.outputDir)
+    if (outputDir !== undefined) {
+      if (outputDir) {
+        try {
+          await mkdir(outputDir, { recursive: true })
+          await access(outputDir, constants.W_OK)
+          const probe = join(outputDir, `.media-workbench-write-test-${process.pid}`)
+          await writeFile(probe, '')
+          await unlink(probe).catch(() => {})
+        } catch {
+          const err = new Error('产物目录不可写，换一个目录')
+          err.status = 400
+          throw err
+        }
+      }
+      next.storage.outputDir = outputDir
+    }
 
     if (['auto', 'zh', 'en'].includes(patch.language)) next.language = patch.language
 

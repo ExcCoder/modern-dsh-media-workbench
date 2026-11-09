@@ -2,7 +2,7 @@
 
 一个 DeepSeek Harness（DSH）插件。装上之后，DSH 侧栏会多一个「摩登-媒体工作室」，里面是四个连在一起的工作台：
 
-- **生图工作台**：一句话出图，风格、画幅、数量、参考图、收藏与历史。
+- **生图工作台**：一句话出图，风格、画幅、数量、最多 8 张参考图队列、收藏与历史。
 - **视频工作台**：文生视频、图生视频，以及不消耗视频额度的「分镜短片」。
 - **写作工作台**：作品库、长文编辑器、续写/润色/扩写/改写/大纲/起标题，流式生成。
 - **星图工作台**：把提示词、写作、图像、视频接成 DAG，逐波并行运行，可存成蓝图复用。
@@ -49,7 +49,9 @@ dsh plugin --profile desktop add /absolute/path/to/dsh-media-workbench
 2. 填接口地址、模型和密钥，保存，点「试画一张」确认能通。
 3. 回生图工作台写提示词，选风格和画幅，生成。
 
-任何兼容 OpenAI Images API 的服务都能用：`POST {baseUrl}/images/generations`；上传参考图时走 `POST {baseUrl}/images/edits`（multipart，字段 `image`）。返回 `data[0].b64_json`、`images[0].url` 两种常见形状都支持。
+任何兼容 OpenAI Images API 的服务都能用：`POST {baseUrl}/images/generations`；上传参考图时走 `POST {baseUrl}/images/edits`（multipart，单张字段 `image`，多张按顺序用 `image[]`）。返回 `data[0].b64_json`、`images[0].url` 两种常见形状都支持。
+
+参考图支持拖入、文件多选和 **Ctrl+V 粘贴**，最多 8 张，按「图一、图二…」编号，可以上移/下移。图片右键可以复制图片到剪贴板、下载原图、复制提示词或打开所在目录；复用带参考图的记录时会询问是覆盖当前参考图，还是只复用提示词。
 
 ### 视频
 
@@ -90,7 +92,7 @@ dsh plugin --profile desktop add /absolute/path/to/dsh-media-workbench
 
 ## 数据与安全
 
-- 数据目录：`$DSH_HOME/media-workbench-modern/`（默认 `~/.dsh/media-workbench-modern/`）
+- 数据目录：`$DSH_HOME/media-workbench-modern/`（默认 `~/.dsh/media-workbench-modern/`）。图片和视频的文件主目录可以在「设置 → 作品文件目录」换到其他盘，保存时会迁移已有文件并删除旧文件；作品记录和设置仍留在默认数据目录。
   - `state.json`：图片/视频记录、写作文档、星图、蓝图
   - `settings.json`：接口地址、模型、密钥，权限 `600`
   - `files/`：生成的图片、视频和上传的参考图

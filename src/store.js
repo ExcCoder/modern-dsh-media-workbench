@@ -81,6 +81,9 @@ export function normalizeState(input) {
 
 function normalizeImage(row) {
   const status = ['queued', 'running', 'done', 'error'].includes(row.status) ? row.status : 'done'
+  const references = (Array.isArray(row.references) ? row.references : row.reference ? [row.reference] : [])
+    .filter(name => typeof name === 'string' && name)
+    .slice(0, 8)
   return {
     id: row.id,
     prompt: String(row.prompt ?? ''),
@@ -89,7 +92,8 @@ function normalizeImage(row) {
     model: String(row.model ?? ''),
     provider: String(row.provider ?? ''),
     size: String(row.size ?? ''),
-    reference: String(row.reference ?? ''),
+    reference: String(row.reference ?? references[0] ?? ''),
+    references,
     file: String(row.file ?? ''),
     width: Number(row.width) || 0,
     height: Number(row.height) || 0,
@@ -140,6 +144,11 @@ export class Store {
     this.state = null
     this.mtimeMs = 0
     this.queue = Promise.resolve()
+  }
+
+  async useFilesDir(dir) {
+    this.filesDir = dir
+    await mkdir(dir, { recursive: true })
   }
 
   async refresh() {

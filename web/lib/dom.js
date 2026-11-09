@@ -78,6 +78,33 @@ export async function copyText(text) {
   }
 }
 
+async function blobToPng(blob) {
+  if (blob.type === 'image/png') return blob
+  const bitmap = await createImageBitmap(blob)
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Canvas is unavailable')
+    context.drawImage(bitmap, 0, 0)
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob(next => next ? resolve(next) : reject(new Error('Could not encode PNG')), 'image/png')
+    })
+  } finally {
+    bitmap.close?.()
+  }
+}
+
+export async function copyImage(url) {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') throw new Error('此环境不支持复制图片')
+  const response = await fetch(new URL(url, location.href), { credentials: 'same-origin' })
+  if (!response.ok) throw new Error(`图片读取失败（${response.status}）`)
+  const png = await blobToPng(await response.blob())
+  await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
+  return true
+}
+
 export function downloadJson(data, filename) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)

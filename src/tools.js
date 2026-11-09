@@ -38,7 +38,7 @@ async function waitUntil(fn, { timeoutMs = 600_000, interval = 1500 } = {}) {
 }
 
 export function apply(ctx, deps) {
-  const { store, settings, saveImageBuffer, runImage, createVideo, runVideoRecord, runGraph, saveDocument } = deps
+  const { store, settings, saveImageBuffer, runImage, createVideo, runVideoRecord, runGraph, saveDocument, ready = Promise.resolve() } = deps
 
   const imageTool = {
     name: 'modern_media_generate_image',
@@ -339,7 +339,16 @@ export function apply(ctx, deps) {
     },
   }
 
-  for (const tool of [imageTool, documentTool, videoTool, mapTool, inspectTool]) ctx.tools.register(tool)
+  for (const tool of [imageTool, documentTool, videoTool, mapTool, inspectTool]) {
+    const execute = tool.execute
+    ctx.tools.register({
+      ...tool,
+      execute: async (...args) => {
+        await ready
+        return execute.apply(tool, args)
+      },
+    })
+  }
 }
 
 export { text }

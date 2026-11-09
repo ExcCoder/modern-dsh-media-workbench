@@ -66,7 +66,7 @@ function extraOf(settings) {
 /**
  * 生成一张图。
  * @param {object} settings 插件设置
- * @param {object} request {prompt, style, negative, size, quality, reference, model}
+ * @param {object} request {prompt, style, negative, size, quality, reference, references, model}
  * @param {{signal?: AbortSignal, filesDir?: string}} options
  * @returns {Promise<{buffer: Buffer, ext: string, width: number, height: number, revisedPrompt?: string}>}
  */
@@ -83,15 +83,24 @@ export async function generateImage(settings, request, { signal, filesDir } = {}
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout
   let result
 
-  if (request.reference && filesDir) {
-    const file = join(filesDir, String(request.reference).replace(/[^\w.-]/g, ''))
-    let buffer
-    try {
-      buffer = await readFile(file)
-    } catch {
-      throw Object.assign(new Error('参考图不存在，重新上传一次'), { status: 400 })
+  const references = (Array.isArray(request.references) ? request.references : request.reference ? [request.reference] : [])
+    .map(name => String(name ?? '').replace(/[^\w.-]/g, ''))
+    .filter(Boolean)
+    .slice(0, 8)
+
+  if (references.length && filesDir) {
+    const images = []
+    for (const name of references) {
+      const file = join(filesDir, name)
+      let buffer
+      try {
+        buffer = await readFile(file)
+      } catch {
+        throw Object.assign(new Error(`参考图不存在：${name}，重新上传一次`), { status: 400 })
+      }
+      const type = extname(file).toLowerCase() === '.jpg' ? 'image/jpeg' : extname(file).toLowerCase() === '.webp' ? 'image/webp' : 'image/png'
+      images.push({ buffer, type, ext: extname(file) || '.png', name })
     }
-    const type = extname(file).toLowerCase() === '.jpg' ? 'image/jpeg' : extname(file).toLowerCase() === '.webp' ? 'image/webp' : 'image/png'
     const form = new FormData()
     form.set('model', model)
     form.set('prompt', prompt)
@@ -99,7 +108,11 @@ export async function generateImage(settings, request, { signal, filesDir } = {}
     if (request.size) form.set('size', request.size)
     if (request.quality) form.set('quality', request.quality)
     for (const [k, v] of Object.entries(extra)) form.set(k, typeof v === 'string' ? v : JSON.stringify(v))
-    form.set('image', new Blob([buffer], { type }), `reference${extname(file) || '.png'}`)
+    if (images.length === 1) {
+      form.set('image', new Blob([images[0].buffer], { type: images[0].type }), `reference${images[0].ext}`)
+    } else {
+      images.forEach((image, index) => form.append('image[]', new Blob([image.buffer], { type: image.type }), `reference-${index + 1}${image.ext}`))
+    }
     const res = await fetch(`${settings.image.baseUrl}/images/edits`, {
       method: 'POST',
       headers: { authorization: `Bearer ${key}` },

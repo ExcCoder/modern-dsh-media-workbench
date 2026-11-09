@@ -1,7 +1,9 @@
 // @exccoder/dsh-media-workbench · host 入口
 // 四个工作台共用一套本机存储：生图 / 视频 / 写作 / 星图
-import { writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { constants } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { copyFile, mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createNode, dependencyClosure, normalizeGraph, RATIOS, templateGraph, topoWaves } from './graph.js'
 import { apply as applyTools } from './tools.js'
@@ -16,7 +18,7 @@ import { cleanOutput, writingPrompts } from './writing.js'
 const ROOT = dirname(fileURLToPath(import.meta.url))
 const WEB_DIR = join(ROOT, '..', 'web')
 const BASE = '/media-workbench-modern'
-const VERSION = '0.1.4'
+const VERSION = '0.2.2'
 
 const STATIC = new Map([
   ['', 'index.html'],
@@ -55,7 +57,21 @@ export function apply(ctx) {
   const graphJobs = new Map()
   let settled = false
 
+  const defaultFilesDir = join(store.root, 'files')
+  const ready = (async () => {
+    const current = await settings.read()
+    const outputDir = current.storage?.outputDir?.trim()
+    if (!outputDir) { await store.useFilesDir(defaultFilesDir); return }
+    try {
+      await store.useFilesDir(outputDir)
+    } catch (err) {
+      console.warn('[media-workbench-modern] custom library folder unavailable:', err.message)
+      await store.useFilesDir(defaultFilesDir)
+    }
+  })()
+
   const settleOnce = async () => {
+    await ready
     if (settled) return
     settled = true
     await store.settle().catch(() => {})
@@ -63,8 +79,58 @@ export function apply(ctx) {
 
   const saveImageBuffer = async (id, result) => {
     const file = `${id}${result.ext}`
-    await writeFile(join(store.filesDir, file), result.buffer)
+    await saveOutput(file, result.buffer)
     return file
+  }
+
+  async function saveOutput(name, buffer) {
+    await writeFile(join(store.filesDir, name), buffer)
+  }
+
+  async function fileExists(path) {
+    try { await stat(path); return true } catch { return false }
+  }
+
+  async function switchFilesDir(target) {
+    const from = resolve(store.filesDir)
+    const to = resolve(target || defaultFilesDir)
+    if (to === from) { await store.useFilesDir(to); return }
+    if (to.startsWith(from + sep)) throw fail('作品目录不能选在当前作品库里面', 400)
+    await mkdir(to, { recursive: true })
+    let entries = []
+    try { entries = await readdir(from, { withFileTypes: true }) } catch (err) {
+      if (err.code !== 'ENOENT') throw err
+    }
+    const moved = []
+    try {
+      for (const entry of entries) {
+        if (!entry.isFile()) continue
+        const source = join(from, entry.name)
+        const destination = join(to, entry.name)
+        let created = true
+        try {
+          await copyFile(source, destination, constants.COPYFILE_EXCL)
+        } catch (err) {
+          if (err.code === 'EEXIST') throw fail(`目标目录已有同名文件：${entry.name}，请换一个空目录`, 400)
+          throw err
+        }
+        await unlink(source)
+        moved.push({ name: entry.name, created })
+      }
+    } catch (err) {
+      for (const item of moved.reverse()) {
+        const source = join(from, item.name)
+        const destination = join(to, item.name)
+        try {
+          if (!(await fileExists(source)) && await fileExists(destination)) await copyFile(destination, source)
+          if (item.created) await unlink(destination).catch(() => {})
+        } catch (rollbackError) {
+          console.warn('[media-workbench-modern] file migration rollback failed:', rollbackError.message)
+        }
+      }
+      throw err
+    }
+    await store.useFilesDir(to)
   }
 
   const updateImage = (id, patch) => store.mutate(state => {
@@ -108,6 +174,10 @@ export function apply(ctx) {
     const ratio = RATIOS[body.ratio]
     const size = String(body.size ?? '').trim() || ratio?.size || current.image.size
     const reference = typeof body.reference === 'string' ? body.reference.replace(/[^\w.-]/g, '') : ''
+    const references = (Array.isArray(body.references) ? body.references : reference ? [reference] : [])
+      .map(name => String(name ?? '').replace(/[^\w.-]/g, ''))
+      .filter(Boolean)
+      .slice(0, 8)
     const records = []
     for (let i = 0; i < count; i++) {
       records.push({
@@ -117,7 +187,8 @@ export function apply(ctx) {
         style: String(body.style ?? '').slice(0, 40),
         model: String(body.model ?? current.image.model).slice(0, 120),
         size,
-        reference,
+        reference: references[0] ?? '',
+        references,
         file: '',
         width: 0,
         height: 0,
@@ -186,7 +257,7 @@ export function apply(ctx) {
         const frames = []
         for (const [index, frame] of result.frames.entries()) {
           const name = `vid_${id}_${index + 1}${frame.ext}`
-          await writeFile(join(store.filesDir, name), frame.buffer)
+          await saveOutput(name, frame.buffer)
           frames.push(name)
         }
         await patch({
@@ -203,7 +274,7 @@ export function apply(ctx) {
           onProgress: progress => { void patch({ progress }) },
         })
         const name = `vid_${id}${result.ext || videoExtensionOf(result.buffer)}`
-        await writeFile(join(store.filesDir, name), result.buffer)
+        await saveOutput(name, result.buffer)
         await patch({ status: 'done', progress: 100, file: name })
       }
     } catch (err) {
@@ -416,7 +487,7 @@ export function apply(ctx) {
         reference: reference?.kind === 'image' ? reference.file : undefined,
       }, { signal: controller.signal, filesDir: store.filesDir })
       const name = `node_${node.id}_${Date.now().toString(36)}${result.ext}`
-      await writeFile(join(store.filesDir, name), result.buffer)
+      await saveOutput(name, result.buffer)
       return { kind: 'image', file: name, width: result.width, height: result.height }
     }
     if (node.type === 'video') {
@@ -439,7 +510,7 @@ export function apply(ctx) {
         const frames = []
         for (const [index, frame] of result.frames.entries()) {
           const name = `node_${node.id}_${index + 1}${frame.ext}`
-          await writeFile(join(store.filesDir, name), frame.buffer)
+          await saveOutput(name, frame.buffer)
           frames.push(name)
         }
         return { kind: 'video', file: '', frames, poster: frames[0] ?? '', storyboard: true }
@@ -447,7 +518,7 @@ export function apply(ctx) {
       if (!videoReady(appSettings)) throw new Error('未配置视频服务，可把节点模式改成「分镜」')
       const result = await generateVideo(appSettings, record, { signal: controller.signal, filesDir: store.filesDir })
       const name = `node_${node.id}_${Date.now().toString(36)}${result.ext || videoExtensionOf(result.buffer)}`
-      await writeFile(join(store.filesDir, name), result.buffer)
+      await saveOutput(name, result.buffer)
       return { kind: 'video', file: name }
     }
     throw new Error(`不支持的节点类型：${node.type}`)
@@ -552,8 +623,40 @@ export function apply(ctx) {
 
     const body = await readJson(req)
 
+    if (api === 'reveal') {
+      const name = String(body.file ?? '').trim()
+      if (!/^[\w.-]+$/.test(name)) return json(res, 400, { error: '文件名无效' })
+      const file = join(store.filesDir, name)
+      const rel = relative(store.filesDir, file)
+      if (!rel || rel.startsWith('..') || isAbsolute(rel)) return json(res, 400, { error: '路径无效' })
+      try { await stat(file) } catch { return json(res, 404, { error: '文件不存在' }) }
+      try {
+        if (process.platform === 'win32') {
+          const child = spawn('explorer.exe', ['/select,', file], { detached: true, stdio: 'ignore' })
+          child.on('error', () => {})
+          child.unref()
+        } else if (process.platform === 'darwin') {
+          spawn('open', ['-R', file], { detached: true, stdio: 'ignore' }).unref()
+        } else {
+          spawn('xdg-open', [dirname(file)], { detached: true, stdio: 'ignore' }).unref()
+        }
+      } catch (err) {
+        return json(res, 500, { error: `打开目录失败：${err.message}` })
+      }
+      return json(res, 200, { ok: true })
+    }
     if (api === 'settings') {
+      const previous = await settings.read()
+      const changingDir = Boolean(body.storage && Object.prototype.hasOwnProperty.call(body.storage, 'outputDir'))
       const next = await settings.update(body)
+      if (changingDir) {
+        try {
+          await switchFilesDir(next.storage?.outputDir)
+        } catch (err) {
+          await settings.update({ storage: { outputDir: previous.storage?.outputDir ?? '' } }).catch(() => {})
+          throw err
+        }
+      }
       return json(res, 200, { settings: publicSettings(next) })
     }
     if (api === 'settings/test-image') {
@@ -756,7 +859,7 @@ export function apply(ctx) {
     for (const controller of graphJobs.values()) controller.abort()
   }, '@exccoder/dsh-media-workbench: abort jobs')
 
-  applyTools(ctx, { store, settings, saveImageBuffer, createVideo, runGraph, saveDocument, templateGraph, BASE })
+  applyTools(ctx, { store, settings, saveImageBuffer, createVideo, runGraph, saveDocument, templateGraph, BASE, ready })
 }
 
 export { BASE }

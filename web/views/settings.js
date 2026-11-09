@@ -98,14 +98,28 @@ export function mount(root) {
 
         <section class="settings-card">
           <header class="settings-head">
-            <div class="settings-title"><span class="settings-ic" style="--c:#6b7280">${icon('folder', 18)}</span><div><h3>${esc(t('本机数据', 'Local data'))}</h3><p>${esc(t('作品、图片、视频和星图都在这个目录，不上传云端。', 'Works, images, videos and star maps live here. Nothing is uploaded.'))}</p></div></div>
+            <div class="settings-title"><span class="settings-ic" style="--c:#6b7280">${icon('settings', 18)}</span><div><h3>${esc(t('维护', 'Maintenance'))}</h3><p>${esc(t('导出工作台记录，或者清空列表。这里只动记录，不会删除作品文件目录里的图片和视频。', 'Export workbench records or clear the lists. This only touches records; files in the Library folder are left alone.'))}</p></div></div>
           </header>
-          <div class="data-path"><code id="data-path">${esc(app.dataDir)}</code><button class="text-btn" id="copy-path">${icon('copy', 13)}${esc(t('复制路径', 'Copy path'))}</button></div>
           <div class="settings-actions wrap">
-            <button class="btn btn-small btn-ghost" id="export-all">${icon('download', 14)}${esc(t('导出全部数据', 'Export all data'))}</button>
+            <button class="btn btn-small btn-ghost" id="export-all">${icon('download', 14)}${esc(t('导出记录 JSON', 'Export records JSON'))}</button>
             <button class="btn btn-small btn-ghost" id="clear-images">${esc(t('清空图片记录', 'Clear images'))}</button>
             <button class="btn btn-small btn-ghost" id="clear-videos">${esc(t('清空视频记录', 'Clear videos'))}</button>
             <button class="btn btn-small btn-ghost danger-quiet" id="clear-all">${esc(t('清空全部记录', 'Clear everything'))}</button>
+          </div>
+        </section>
+
+        <section class="settings-card">
+          <header class="settings-head">
+            <div class="settings-title"><span class="settings-ic" style="--c:#c96442">${icon('download', 18)}</span><div><h3>${esc(t('作品文件目录', 'Library folder'))}</h3><p>${esc(t('图片、视频的实际文件主目录。换到其他盘时会把已有文件迁移过去，释放 C 盘；状态和设置文件仍留在系统盘。留空恢复默认目录。', 'The actual storage folder for images and videos. Changing it migrates existing files and frees the system drive; state and settings stay on the system drive. Leave blank to use the default.'))}</p></div></div>
+          </header>
+          <label class="field"><span class="field-label">${esc(t('目录绝对路径', 'Absolute folder path'))}</span>
+            <input class="input" id="output-dir" value="${esc(settings.storage?.outputDir ?? '')}" placeholder="D:\\AI作品" spellcheck="false">
+          </label>
+          <div class="settings-actions">
+            <span class="fine" id="output-dir-hint">${esc(t('建议选空目录；保存时会创建目录并迁移现有文件，目标里有同名文件会拒绝迁移。', 'Prefer an empty folder. It is created and existing files are migrated; same-name files cause the move to be rejected.'))}</span>
+            <span class="spacer"></span>
+            <button class="btn btn-small btn-ghost" id="output-dir-clear">${esc(t('恢复默认目录', 'Use default'))}</button>
+            <button class="btn btn-small btn-primary" id="output-dir-save">${esc(t('保存目录', 'Save folder'))}</button>
           </div>
         </section>
 
@@ -185,6 +199,21 @@ export function mount(root) {
   field('image-save').addEventListener('click', saveImage)
   field('video-save').addEventListener('click', saveVideo)
 
+  async function saveOutputDir(value) {
+    if (busy) return
+    busy = true
+    try {
+      const data = await api('settings', { storage: { outputDir: value } })
+      app.settings = data.settings
+      field('output-dir').value = data.settings?.storage?.outputDir ?? ''
+      app.toast(value ? t('作品目录已迁移', 'Library folder moved') : t('已恢复默认目录', 'Default folder restored'), 'success')
+      await app.refresh()
+    } catch (err) { app.toast(err.message, 'error') }
+    finally { busy = false }
+  }
+  field('output-dir-save').addEventListener('click', () => saveOutputDir(field('output-dir').value))
+  field('output-dir-clear').addEventListener('click', () => { field('output-dir').value = ''; saveOutputDir('') })
+
   field('image-clear-key')?.addEventListener('click', async () => {
     try {
       const data = await api('settings', { image: { clearKey: true } })
@@ -216,10 +245,6 @@ export function mount(root) {
       app.toast(t('接口通了', 'Provider works'), 'success')
     } catch (err) { app.toast(err.message, 'error') }
     finally { busy = false; btn.textContent = t('试画一张', 'Test image') }
-  })
-
-  field('copy-path').addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(app.dataDir); app.toast(t('路径已复制', 'Path copied'), 'success') } catch { app.toast(t('复制失败', 'Copy failed'), 'error') }
   })
 
   field('export-all').addEventListener('click', () => { location.href = '/media-workbench-modern/api/export' })

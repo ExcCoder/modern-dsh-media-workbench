@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-11-09
+
+Image workflow and storage update.
+
+### Added
+
+- Reference queue for Image Studio: up to 8 images, Ctrl+V paste, multi-file drop/select, per-image up/down reorder and removal, with「图一 / 图二」labels.
+- Multi-reference image edits use ordered `image[]` fields; single references keep the existing `image` field.
+- Reuse now carries the original reference images. If the source image had references, a confirmation asks whether to replace the current queue or reuse the prompt only.
+- Custom **Library folder**: image/video files can move to another drive. Saving migrates existing files, removes them from the old folder, and rejects invalid, unwritable, nested, or name-conflicting targets.
+- Image right-click menu: copy image to clipboard, download original, copy prompt, and open the containing folder (file is selected in Explorer/Finder).
+- Settings cleanup: removed the read-only workbench data card; maintenance actions now live under「维护」.
+
+### Fixed
+
+- Workbench height now fills the full DSH panel, including the bottom of the rail and composer.
+- Settings copy now distinguishes workbench records from the actual media library folder.
+
 ## [0.1.4] - 2026-11-07
 
 Fixed video downloads that returned 401 from gateways which require the same Bearer token on the media URL. The downloader now retries the provider URL with authentication and falls back to the configured content endpoint.

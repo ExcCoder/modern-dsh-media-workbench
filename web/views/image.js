@@ -1,5 +1,5 @@
 import { api, fileUrl, upload } from '../lib/api.js'
-import { $, $$, autoGrow, copyText, downloadUrl, esc, fmtTime, modKey } from '../lib/dom.js'
+import { $, $$, autoGrow, copyImage, copyText, downloadUrl, esc, fmtTime, modKey } from '../lib/dom.js'
 import { icon } from '../lib/icons.js'
 import { app, t } from '../lib/state.js'
 import { INSPIRATIONS, RATIOS, STYLE_LABELS_EN, STYLES } from '../lib/constants.js'
@@ -9,7 +9,7 @@ export function mount(root) {
   let style = prefs.imageStyle ?? '电影感'
   let ratio = RATIOS.some(r => r.id === prefs.imageRatio) ? prefs.imageRatio : '16:9'
   let count = Math.min(4, Math.max(1, Number(prefs.imageCount) || 1))
-  let reference = null
+  let references = []
   let filter = 'all'
   let query = ''
   let busy = false
@@ -17,6 +17,74 @@ export function mount(root) {
   const styleName = value => (app.lang === 'en' ? (STYLE_LABELS_EN[value] ?? value) : value)
   const inspoTitle = item => (app.lang === 'en' ? item.titleEn : item.title)
   const inspoPrompt = item => (app.lang === 'en' ? item.promptEn : item.prompt)
+
+  let imageMenu = null
+  let imageMenuOff = null
+
+  function closeImageMenu() {
+    if (imageMenu) imageMenu.remove()
+    imageMenu = null
+    imageMenuOff?.()
+    imageMenuOff = null
+  }
+
+  function showImageMenu(event, row) {
+    if (!row?.file) return
+    closeImageMenu()
+    const menu = document.createElement('div')
+    menu.className = 'image-menu'
+    menu.setAttribute('role', 'menu')
+    menu.innerHTML = `
+      <button type="button" role="menuitem" data-image-menu="copy">${icon('copy', 14)}${esc(t('复制图片', 'Copy image'))}</button>
+      <button type="button" role="menuitem" data-image-menu="download">${icon('download', 14)}${esc(t('下载原图', 'Download original'))}</button>
+      <button type="button" role="menuitem" data-image-menu="reveal">${icon('folder', 14)}${esc(t('打开文件所在目录', 'Open containing folder'))}</button>
+      <span class="image-menu-sep"></span>
+      <button type="button" role="menuitem" data-image-menu="prompt">${icon('pen', 14)}${esc(t('复制提示词', 'Copy prompt'))}</button>
+    `
+    document.body.appendChild(menu)
+    const box = menu.getBoundingClientRect()
+    menu.style.left = `${Math.max(8, Math.min(event.clientX, innerWidth - box.width - 8))}px`
+    menu.style.top = `${Math.max(8, Math.min(event.clientY, innerHeight - box.height - 8))}px`
+    imageMenu = menu
+
+    const onOutside = next => {
+      if (!menu.contains(next.target)) closeImageMenu()
+    }
+    const onKey = next => { if (next.key === 'Escape') closeImageMenu() }
+    const onScroll = () => closeImageMenu()
+    window.addEventListener('pointerdown', onOutside, true)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('blur', onScroll)
+    imageMenuOff = () => {
+      window.removeEventListener('pointerdown', onOutside, true)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('blur', onScroll)
+    }
+
+    menu.querySelectorAll('[data-image-menu]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const action = button.dataset.imageMenu
+        closeImageMenu()
+        try {
+          if (action === 'copy') {
+            await copyImage(fileUrl(row.file))
+            app.toast(t('图片已复制到剪贴板', 'Image copied to clipboard'), 'success')
+          } else if (action === 'download') {
+            downloadUrl(fileUrl(row.file), `modern-media-${row.id}${row.file?.match(/\.\w+$/)?.[0] ?? '.png'}`)
+          } else if (action === 'reveal') {
+            await api('reveal', { file: row.file })
+          } else if (action === 'prompt') {
+            const ok = await copyText(row.prompt)
+            app.toast(ok ? t('提示词已复制', 'Prompt copied') : t('复制失败', 'Copy failed'), ok ? 'success' : 'error')
+          }
+        } catch (err) {
+          app.toast(err.message || t('复制失败', 'Copy failed'), 'error')
+        }
+      })
+    })
+  }
 
   root.innerHTML = `
     <section class="bench bench-image">
@@ -68,10 +136,10 @@ export function mount(root) {
         <details class="advanced" id="advanced">
           <summary>${icon('layers', 14)}<span>${esc(t('参考图与高级参数', 'Reference & advanced'))}</span>${icon('chevron', 14)}</summary>
           <div class="advanced-body">
-            <div class="drop" id="drop" tabindex="0" role="button" aria-label="${esc(t('上传参考图', 'Upload reference'))}">
-              <input type="file" id="ref-input" accept="image/png,image/jpeg,image/webp" hidden>
-              <div class="drop-empty">${icon('upload', 18)}<span>${esc(t('拖入或选择一张参考图', 'Drop or choose a reference image'))}</span><small>${esc(t('会走图生图 / 编辑接口', 'Uses the image edit endpoint'))}</small></div>
-              <div class="drop-preview" id="drop-preview" hidden><img id="ref-img" alt=""><button type="button" class="mini-x" id="ref-clear" aria-label="移除">${icon('x', 12)}</button></div>
+            <div class="drop ref-drop" id="drop" tabindex="0" role="button" aria-label="${esc(t('上传参考图', 'Upload reference'))}">
+              <input type="file" id="ref-input" accept="image/png,image/jpeg,image/webp" multiple hidden>
+              <div class="drop-empty" id="ref-empty">${icon('upload', 18)}<span>${esc(t('拖入、选择或 Ctrl+V 粘贴参考图', 'Drop, choose or paste (Ctrl+V) reference images'))}</span><small>${esc(t('最多 8 张，按顺序对应图一、图二', 'Up to 8 images, ordered as figure 1, 2…'))}</small></div>
+              <div class="ref-list" id="ref-list"></div>
             </div>
             <label class="field">
               <span class="field-label">${esc(t('反向提示词', 'Negative prompt'))}</span>
@@ -153,16 +221,56 @@ export function mount(root) {
     if (event.target.closest('[data-act="settings"]')) app.navigate('settings')
   })
 
-  // 参考图
+  // 参考图队列：最多 8 张，可粘贴、拖入、排序
   const refInput = $('#ref-input')
   const drop = $('#drop')
+  const refList = $('#ref-list')
+  const refEmpty = $('#ref-empty')
   const pickRef = () => refInput.click()
-  drop.addEventListener('click', event => { if (!event.target.closest('#ref-clear')) pickRef() })
-  drop.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pickRef() } })
+
+  function renderReferences() {
+    const label = index => app.lang === 'en' ? `Fig. ${index + 1}` : `图${'一二三四五六七八'[index] ?? index + 1}`
+    refEmpty.hidden = references.length > 0
+    refList.innerHTML = references.map((ref, index) => `
+      <figure class="ref-item" data-ref-index="${index}">
+        <img src="${esc(ref.url)}" alt="${esc(label(index))}">
+        <span class="ref-badge">${esc(label(index))}</span>
+        <span class="ref-tools">
+          <button type="button" data-ref-act="up" title="${esc(t('上移', 'Move up'))}" ${index === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" data-ref-act="down" title="${esc(t('下移', 'Move down'))}" ${index === references.length - 1 ? 'disabled' : ''}>↓</button>
+          <button type="button" data-ref-act="remove" title="${esc(t('移除', 'Remove'))}">${icon('x', 11)}</button>
+        </span>
+      </figure>`).join('')
+  }
+
+  async function addReferences(files) {
+    const images = [...files].filter(file => file?.type?.startsWith('image/'))
+    if (!images.length) return
+    const room = 8 - references.length
+    if (room <= 0) return app.toast(t('最多 8 张参考图', 'Up to 8 references'), 'error')
+    for (const file of images.slice(0, room)) {
+      try {
+        const result = await upload(file)
+        references.push(result)
+        renderReferences()
+      } catch (err) {
+        app.toast(err.message, 'error')
+      }
+    }
+    if (images.length > room) app.toast(t('最多 8 张参考图，多出的已忽略', 'Up to 8 references; extras ignored'), 'error')
+  }
+
+  renderReferences()
+  drop.addEventListener('click', event => {
+    if (event.target.closest('.ref-item')) return
+    pickRef()
+  })
+  drop.addEventListener('keydown', event => {
+    if (event.target.closest('.ref-item')) return
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pickRef() }
+  })
   refInput.addEventListener('change', async () => {
-    const file = refInput.files?.[0]
-    if (!file) return
-    await handleReference(file)
+    await addReferences([...(refInput.files ?? [])])
     refInput.value = ''
   })
   for (const type of ['dragenter', 'dragover']) {
@@ -172,30 +280,38 @@ export function mount(root) {
     drop.addEventListener(type, event => { event.preventDefault(); drop.classList.remove('is-over') })
   }
   drop.addEventListener('drop', event => {
-    const file = [...(event.dataTransfer?.files ?? [])].find(f => f.type.startsWith('image/'))
-    if (file) handleReference(file)
+    addReferences([...(event.dataTransfer?.files ?? [])])
   })
-  $('#ref-clear').addEventListener('click', event => {
+  refList.addEventListener('click', event => {
+    const button = event.target.closest('[data-ref-act]')
+    if (!button) return
     event.stopPropagation()
-    reference = null
-    $('#drop-preview').hidden = true
-    $('#drop').querySelector('.drop-empty').hidden = false
+    const index = Number(button.closest('.ref-item')?.dataset.refIndex)
+    if (!Number.isInteger(index) || !references[index]) return
+    if (button.dataset.refAct === 'remove') references.splice(index, 1)
+    if (button.dataset.refAct === 'up' && index > 0) {
+      [references[index - 1], references[index]] = [references[index], references[index - 1]]
+    }
+    if (button.dataset.refAct === 'down' && index < references.length - 1) {
+      [references[index + 1], references[index]] = [references[index], references[index + 1]]
+    }
+    renderReferences()
   })
 
-  async function handleReference(file) {
-    if (!file.type.startsWith('image/')) return app.toast(t('请选图片文件', 'Choose an image file'), 'error')
-    try {
-      const result = await upload(file)
-      reference = result
-      const img = $('#ref-img')
-      img.src = result.url
-      $('#drop-preview').hidden = false
-      $('#drop').querySelector('.drop-empty').hidden = true
-      app.toast(t('参考图已加入', 'Reference added'), 'success')
-    } catch (err) {
-      app.toast(err.message, 'error')
+  function onPaste(event) {
+    if (!drop.isConnected) {
+      document.removeEventListener('paste', onPaste)
+      return
     }
+    const files = [...(event.clipboardData?.items ?? [])]
+      .filter(item => item.type.startsWith('image/'))
+      .map(item => item.getAsFile())
+      .filter(Boolean)
+    if (!files.length) return
+    event.preventDefault()
+    addReferences(files)
   }
+  document.addEventListener('paste', onPaste)
 
   function paintChoices() {
     $$('#styles [data-style]').forEach(btn => btn.classList.toggle('is-on', btn.dataset.style === style))
@@ -295,6 +411,45 @@ export function mount(root) {
     galleryEl.innerHTML = list.map(card).join('')
   }
 
+  async function reuseImage(row) {
+    const original = (Array.isArray(row.references) && row.references.length ? row.references : row.reference ? [row.reference] : [])
+      .filter(name => typeof name === 'string' && name)
+      .slice(0, 8)
+    let usedReferences = false
+    if (original.length) {
+      const useReferences = await app.confirm({
+        title: t('这张图带了参考图', 'This image has references'),
+        message: t(
+          `这张图用了 ${original.length} 张参考图。要一起复用吗？选「覆盖参考图」会替换当前队列；选「只用提示词」会保留当前参考图。`,
+          `This image used ${original.length} reference image(s). Reuse them too? Choose "Use references" to replace the current queue, or "Prompt only" to keep what you have.`,
+        ),
+        confirmText: t('覆盖参考图', 'Use references'),
+        cancelText: t('只用提示词', 'Prompt only'),
+      })
+      if (useReferences) {
+        references = original.map(name => ({ name, url: fileUrl(name) }))
+        renderReferences()
+        usedReferences = true
+      }
+    } else {
+      references = []
+      renderReferences()
+    }
+    promptEl.value = row.prompt
+    promptEl.dispatchEvent(new Event('input'))
+    if (row.style && STYLES.includes(row.style)) style = row.style
+    if (row.size?.includes('x')) {
+      const match = RATIOS.find(item => item.hint.replaceAll(' × ', 'x') === row.size)
+      if (match) ratio = match.id
+    }
+    paintChoices()
+    promptEl.focus()
+    app.toast(
+      usedReferences ? t('已复用提示词和参考图', 'Prompt and references loaded') : t('已复用提示词', 'Prompt loaded'),
+      'success',
+    )
+  }
+
   galleryEl.addEventListener('click', async event => {
     const btn = event.target.closest('[data-act]')
     if (!btn) return
@@ -317,16 +472,7 @@ export function mount(root) {
       return
     }
     if (act === 'reuse') {
-      promptEl.value = row.prompt
-      promptEl.dispatchEvent(new Event('input'))
-      if (row.style && STYLES.includes(row.style)) style = row.style
-      if (row.size?.includes('x')) {
-        const match = RATIOS.find(item => item.hint.replaceAll(' × ', 'x') === row.size)
-        if (match) ratio = match.id
-      }
-      paintChoices()
-      promptEl.focus()
-      app.toast(t('已填入提示词', 'Prompt loaded'), 'success')
+      await reuseImage(row)
       return
     }
     if (act === 'retry') {
@@ -351,6 +497,16 @@ export function mount(root) {
     if (!media) return
     event.preventDefault()
     openLightbox(media.dataset.id)
+  })
+
+  galleryEl.addEventListener('contextmenu', event => {
+    const media = event.target.closest('.shot-media')
+    const image = event.target.closest('.shot-media img')
+    if (!media || !image) return
+    const row = (app.state?.images ?? []).find(item => item.id === media.closest('.shot')?.dataset.id)
+    if (!row) return
+    event.preventDefault()
+    showImageMenu(event, row)
   })
 
   galleryEl.addEventListener('click', event => {
@@ -390,6 +546,7 @@ export function mount(root) {
           </div>
           <div class="lb-actions">
             <button class="btn btn-primary" data-lb="download">${icon('download', 15)}${esc(t('下载', 'Download'))}</button>
+            <button class="btn btn-ghost" data-lb="copy-image">${icon('copy', 15)}${esc(t('复制图片', 'Copy image'))}</button>
             <button class="btn btn-ghost" data-lb="fav">${icon('heart', 15)}${row.favorite ? t('取消收藏', 'Unsave') : t('收藏', 'Save')}</button>
             <button class="btn btn-ghost" data-lb="copy">${icon('copy', 15)}${esc(t('复制提示词', 'Copy prompt'))}</button>
             <button class="btn btn-ghost" data-lb="reuse">${icon('refresh', 15)}${esc(t('用它再画', 'Use again'))}</button>
@@ -403,14 +560,17 @@ export function mount(root) {
           if (act === 'prev') { index = (index - 1 + list.length) % list.length; paint(); return }
           if (act === 'next') { index = (index + 1) % list.length; paint(); return }
           if (act === 'download') { downloadUrl(fileUrl(row.file), `modern-media-${row.id}.png`); return }
+          if (act === 'copy-image') {
+            try {
+              await copyImage(fileUrl(row.file))
+              app.toast(t('图片已复制到剪贴板', 'Image copied to clipboard'), 'success')
+            } catch (err) { app.toast(err.message || t('复制失败', 'Copy failed'), 'error') }
+            return
+          }
           if (act === 'copy') { await copyText(row.prompt); app.toast(t('已复制', 'Copied'), 'success'); return }
           if (act === 'reuse') {
-            promptEl.value = row.prompt
-            promptEl.dispatchEvent(new Event('input'))
-            if (row.style && STYLES.includes(row.style)) style = row.style
-            paintChoices()
+            await reuseImage(row)
             closeRef.fn()
-            promptEl.focus()
             return
           }
           if (act === 'fav') {
@@ -423,6 +583,10 @@ export function mount(root) {
             } catch (err) { app.toast(err.message, 'error') }
           }
         })
+      })
+      cardEl.querySelector('.lb-figure img')?.addEventListener('contextmenu', event => {
+        event.preventDefault()
+        showImageMenu(event, list[index])
       })
     }
     paint()
@@ -458,7 +622,7 @@ export function mount(root) {
         count,
         quality: $('#quality').value,
         negative: $('#negative').value.trim(),
-        reference: reference?.name ?? '',
+        references: references.map(item => item.name),
       })
       api('preferences', { imageStyle: style, imageRatio: ratio, imageCount: count }).catch(() => {})
       app.toast(t(`已提交 ${count} 张，稍等片刻`, `Queued ${count} image(s)`), 'success')
