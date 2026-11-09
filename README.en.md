@@ -1,13 +1,14 @@
 # Modern-MediaStudio · @exccoder/dsh-media-workbench
 
-A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) plugin that adds a **Modern-MediaStudio** to the sidebar with four connected workbenches:
+A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) plugin that adds a **Modern-MediaStudio** to the sidebar with five connected workbenches:
 
 - **Image Studio** — prompt to image, nine style presets, six aspect ratios, reference-image editing, favorites and history.
 - **Writing Studio** — local document library, selection-aware continue / polish / expand / rewrite / outline / title, streaming output.
 - **Star Map** — a typed DAG of prompt, writing, image, video and preview nodes; cycle checks, parallel topological execution, templates and reusable blueprints.
 - **Video Studio** — text-to-video, image-to-video, and a **Storyboard** mode that turns four keyframes into a moving preview without a video provider.
+- **Voice Studio** — text-to-speech with a separately configured OpenAI Audio Speech compatible provider, local playback and downloads.
 
-Writing uses DSH's currently selected model. Image and video providers are configured separately. All works, images, videos and Star Maps stay on this machine. The UI is available in Chinese and English and follows DSH's language and light/dark theme.
+Writing uses DSH's currently selected model. Image, video and voice providers are configured separately. All works, images, videos and Star Maps stay on this machine. The UI is available in Chinese and English and follows DSH's language and light/dark theme.
 
 [中文说明](README.md)
 

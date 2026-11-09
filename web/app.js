@@ -1,9 +1,10 @@
 import { api } from './lib/api.js'
-import { $, esc, modKey } from './lib/dom.js'
+import { $, copyText, esc, modKey } from './lib/dom.js'
 import { icon, brandMark } from './lib/icons.js'
 import { app, t } from './lib/state.js'
 import * as imageView from './views/image.js'
 import * as videoView from './views/video.js'
+import * as voiceView from './views/voice.js'
 import * as writeView from './views/write.js'
 import * as constellationView from './views/constellation.js'
 import * as settingsView from './views/settings.js'
@@ -13,6 +14,7 @@ const ROUTES = {
   write: { mod: writeView, title: ['写作工作台', 'Writing Studio'], eyebrow: ['LONG FORM', 'LONG FORM'], desc: ['从灵感到成稿，留得住每一版。', 'From spark to manuscript, every draft kept.'] },
   constellation: { mod: constellationView, title: ['星图工作台', 'Star Map'], eyebrow: ['NODE GRAPH', 'NODE GRAPH'], desc: ['把提示词、写作、画面与视频连成一条线。', 'Wire prompts, writing, image and video into one flow.'] },
   video: { mod: videoView, title: ['视频工作台', 'Video Studio'], eyebrow: ['MOTION', 'MOTION'], desc: ['给画面一点时间。', 'Give the frame some time.'] },
+  voice: { mod: voiceView, title: ['语音工作台', 'Voice Studio'], eyebrow: ['TEXT TO SPEECH', 'TEXT TO SPEECH'], desc: ['把文字读出来。', 'Turn text into a voice.'] },
   settings: { mod: settingsView, title: ['设置', 'Settings'], eyebrow: ['WORKBENCH', 'WORKBENCH'], desc: ['接口、模型与本机数据。', 'Providers, models and local data.'] },
 }
 
@@ -41,8 +43,10 @@ function renderChrome() {
         <button class="rail-btn" data-route="write">${icon('pen', 20)}<span>${esc(t('写作', 'Write'))}</span></button>
         <button class="rail-btn" data-route="constellation">${icon('star', 20)}<span>${esc(t('星图', 'Map'))}</span></button>
         <button class="rail-btn" data-route="video">${icon('film', 20)}<span>${esc(t('视频', 'Video'))}</span></button>
+        <button class="rail-btn" data-route="voice">${icon('mic', 20)}<span>${esc(t('语音', 'Voice'))}</span></button>
       </nav>
       <div class="rail-foot">
+        <a class="rail-btn rail-link" href="https://github.com/ExcCoder/modern-dsh-media-workbench" target="_blank" rel="noopener" title="GitHub">${icon('external', 19)}<span>GitHub</span></a>
         <button class="rail-btn" data-route="settings">${icon('settings', 19)}<span>${esc(t('设置', 'Setup'))}</span></button>
         <button class="rail-btn rail-theme" id="theme-toggle" title="${esc(t('切换明暗', 'Toggle theme'))}">${icon(theme === 'dark' ? 'sun' : 'moon', 17)}</button>
       </div>
@@ -55,6 +59,10 @@ function renderChrome() {
           <p class="topbar-desc" id="top-desc"></p>
         </div>
         <div class="topbar-side">
+          <a class="qq-chip" href="https://qm.qq.com/q/qAkGlBo0HC" target="_blank" rel="noopener" title="${esc(t('加入 QQ 交流群', 'Join the QQ group'))}">
+            ${icon('link', 14)}<span>${esc(t('QQ 群', 'QQ group'))}</span><b>741979677</b>
+          </a>
+          <button class="icon-btn qq-copy" id="qq-copy" title="${esc(t('复制群号', 'Copy group number'))}">${icon('copy', 14)}</button>
           <button class="status-chip" id="model-chip" title="${esc(t('DSH 当前模型', 'Current DSH model'))}"></button>
           <button class="status-chip" id="image-chip" title="${esc(t('打开设置', 'Open settings'))}"></button>
           <button class="icon-btn" id="refresh-btn" title="${esc(t('刷新', 'Refresh'))}">${icon('refresh', 16)}</button>
@@ -186,6 +194,10 @@ function wire() {
     const nav = event.target.closest('.rail-btn[data-route]')
     if (nav) {
       app.navigate(nav.dataset.route)
+      return
+    }
+    if (event.target.closest('#qq-copy')) {
+      copyText('741979677').then(ok => bootToast(ok ? t('群号已复制', 'Group number copied') : t('复制失败', 'Copy failed'), ok ? 'success' : 'error'))
       return
     }
     if (event.target.closest('#refresh-btn')) {

@@ -9,16 +9,17 @@ import { createNode, dependencyClosure, normalizeGraph, RATIOS, templateGraph, t
 import { apply as applyTools } from './tools.js'
 import { generateImage } from './image.js'
 import { modelInfo, streamText } from './llm.js'
-import { imageReady, IMAGE_PRESETS, publicSettings, Settings, VIDEO_PRESETS, videoReady } from './settings.js'
+import { imageReady, IMAGE_PRESETS, publicSettings, Settings, VIDEO_PRESETS, videoReady, VOICE_PRESETS, voiceReady } from './settings.js'
 import { Store } from './store.js'
 import { clampInt, extensionOf, fail, imageSize, json, newId, readBuffer, readJson, safeJoin, sendFile, videoExtensionOf } from './util.js'
 import { generateStoryboard, generateVideo } from './video.js'
+import { generateVoice } from './voice.js'
 import { cleanOutput, writingPrompts } from './writing.js'
 
 const ROOT = dirname(fileURLToPath(import.meta.url))
 const WEB_DIR = join(ROOT, '..', 'web')
 const BASE = '/media-workbench-modern'
-const VERSION = '0.2.2'
+const VERSION = '0.3.5'
 
 const STATIC = new Map([
   ['', 'index.html'],
@@ -201,6 +202,49 @@ export function apply(ctx) {
     await store.mutate(state => { state.images.unshift(...records); state.images = state.images.slice(0, 300) })
     void Promise.all(records.map(row => runImage(row.id, row).catch(() => {})))
     return records
+  }
+
+  async function createVoice(body) {
+    const current = await settings.read()
+    if (!voiceReady(current)) throw fail('还没有配置语音服务。打开「设置 → 语音服务」，填入接口、模型和密钥。', 400)
+    const text = String(body.text ?? '').trim()
+    if (!text) throw fail('先写一段要朗读的文字', 400)
+    if (text.length > 4096) throw fail('文字最多 4096 个字符', 400)
+    const id = newId('voice')
+    const requestedFormat = String(body.format || current.voice.format || 'mp3').toLowerCase()
+    const record = {
+      id,
+      text: text.slice(0, 4096),
+      voice: String(body.voice || current.voice.voice || 'alloy').slice(0, 80),
+      model: String(body.model || current.voice.model).slice(0, 120),
+      format: ['mp3', 'wav', 'opus', 'aac', 'flac'].includes(requestedFormat) ? requestedFormat : 'mp3',
+      file: '',
+      status: 'running',
+      error: '',
+      createdAt: new Date().toISOString(),
+    }
+    await store.mutate(state => { state.voices.unshift(record); state.voices = state.voices.slice(0, 150) })
+    try {
+      const result = await generateVoice(current, { text, voice: record.voice, format: record.format })
+      const name = `voice_${id}${result.ext}`
+      await saveOutput(name, result.buffer)
+      const row = await store.mutate(state => {
+        const target = state.voices.find(item => item.id === id)
+        if (!target) return null
+        Object.assign(target, { status: 'done', file: name, format: record.format, error: '' })
+        return target
+      })
+      return row ?? record
+    } catch (err) {
+      await store.mutate(state => {
+        const target = state.voices.find(item => item.id === id)
+        if (target) {
+          target.status = 'error'
+          target.error = String(err.message || '语音生成失败').slice(0, 500)
+        }
+      })
+      throw err
+    }
   }
 
   async function createVideo(body) {
@@ -605,10 +649,33 @@ export function apply(ctx) {
           settings: publicSettings(config),
           imagePresets: IMAGE_PRESETS,
           videoPresets: VIDEO_PRESETS,
+          voicePresets: VOICE_PRESETS,
           model: modelInfo(ctx),
           version: VERSION,
           dataDir: store.root,
         })
+      }
+      if (api === 'update') {
+        try {
+          const response = await fetch('https://api.github.com/repos/ExcCoder/modern-dsh-media-workbench/releases/latest', {
+            headers: { accept: 'application/vnd.github+json', 'user-agent': 'dsh-media-workbench' },
+            signal: AbortSignal.timeout(10_000),
+          })
+          if (!response.ok) throw new Error(`GitHub 返回 ${response.status}`)
+          const release = await response.json()
+          const latest = String(release.tag_name ?? '').replace(/^v/i, '')
+          const versionParts = value => String(value).split('-')[0].split('.').map(Number)
+          const a = versionParts(VERSION)
+          const b = versionParts(latest)
+          let newer = false
+          for (let i = 0; i < Math.max(a.length, b.length); i++) {
+            if ((b[i] || 0) > (a[i] || 0)) { newer = true; break }
+            if ((b[i] || 0) < (a[i] || 0)) break
+          }
+          return json(res, 200, { current: VERSION, latest, updateAvailable: newer, url: release.html_url ?? '' })
+        } catch (err) {
+          return json(res, 502, { error: `检查更新失败：${err.message}` })
+        }
       }
       if (api === 'export') {
         const state = await store.read()
@@ -674,6 +741,18 @@ export function apply(ctx) {
     if (api === 'image/generate') {
       const records = await createImages(body)
       return json(res, 200, { items: records })
+    }
+    if (api === 'voice/generate') {
+      const record = await createVoice(body)
+      return json(res, 200, { item: record })
+    }
+    if (api === 'voice/action') {
+      const id = String(body.id ?? '')
+      if (body.action === 'delete') {
+        await store.mutate(state => { state.voices = state.voices.filter(item => item.id !== id) })
+        return json(res, 200, { ok: true })
+      }
+      return json(res, 400, { error: '未知操作' })
     }
     if (api === 'image/action') {
       const id = String(body.id ?? '')
@@ -829,10 +908,11 @@ export function apply(ctx) {
     }
     if (api === 'clear') {
       const scope = String(body.scope ?? '')
-      if (!['images', 'videos', 'all'].includes(scope)) return json(res, 400, { error: '未知范围' })
+      if (!['images', 'videos', 'voices', 'all'].includes(scope)) return json(res, 400, { error: '未知范围' })
       await store.mutate(state => {
         if (scope === 'images' || scope === 'all') state.images = []
         if (scope === 'videos' || scope === 'all') state.videos = []
+        if (scope === 'voices' || scope === 'all') state.voices = []
       })
       return json(res, 200, { ok: true })
     }

@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.3.5] - 2026-11-09
+
+Voice, community and update polish.
+
+### Added
+
+- QQ group entry in the top bar (`741979677`) with a join link and a copy-number button.
+- Settings「检查更新」now compares the local version with the latest GitHub Release.
+- Voice Studio: local audio history with playback, download and delete; separate voice provider configuration.
+
+### Fixed
+
+- MiniMax T2A v2 endpoints are detected and called with `voice_setting` / `audio_setting`; hex audio is decoded to a real audio file.
+- OpenAI-style voice names are mapped to a valid MiniMax `voice_id`.
+- Audio MIME types (`.mp3`, `.wav`, `.ogg`, `.opus`, `.aac`, `.flac`, `.pcm`, `.m4a`) are now served correctly, so generated audio plays in the browser.
+
+## [0.3.0] - 2026-11-09
+
+### Added
+
+- **Voice Studio**: text-to-speech through a separately configured OpenAI Audio Speech compatible provider (`POST /audio/speech`), local audio history, playback, download and delete.
+- Voice provider settings: base URL, model, key, default voice, output format and extra JSON.
+- Sidebar GitHub button that opens the project repository.
+- Settings「检查更新」button that compares the local version with the latest GitHub Release.
+
 ## [0.2.2] - 2026-11-09
 
 Image workflow and storage update.

@@ -4,6 +4,11 @@ node_modules/
 .dsh-test/
 .shots/
 release/
+.blog/
 *.tgz
 *.zip
 *.tar.gz
+.npmrc.publish
+.npmrc
+.env
+.env.*

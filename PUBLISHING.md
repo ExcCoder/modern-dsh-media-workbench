@@ -38,7 +38,7 @@ git clone https://github.com/ExcCoder/modern-dsh-media-workbench.git
 cd modern-dsh-media-workbench
 # copy the plugin source into this directory
 git add .
-git commit -m "release: v0.2.2"
+git commit -m "release: v0.3.5"
 git push origin master
 ```
 
@@ -71,11 +71,11 @@ Users must fully restart DSH after installing a new plugin.
 
 ## 5. Create a GitHub release
 
-Use the version as the tag (`v0.2.2`), copy the matching section of `CHANGELOG.md` into the release notes, and attach the artifacts from `release/`:
+Use the version as the tag (`v0.3.5`), copy the matching section of `CHANGELOG.md` into the release notes, and attach the artifacts from `release/`:
 
-- `exccoder-dsh-media-workbench-0.2.2.tgz`
-- `exccoder-dsh-media-workbench-0.2.2-source.zip`
-- `exccoder-dsh-media-workbench-0.2.2-source.tar.gz`
+- `exccoder-dsh-media-workbench-0.3.5.tgz`
+- `exccoder-dsh-media-workbench-0.3.5-source.zip`
+- `exccoder-dsh-media-workbench-0.3.5-source.tar.gz`
 - `SHA256SUMS.txt`
 
 ## 6. Release checklist

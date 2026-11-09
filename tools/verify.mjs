@@ -14,6 +14,7 @@ import { imageReady, publicSettings, Settings, videoReady } from '../src/setting
 import { styledPrompt, generateImage } from '../src/image.js'
 import { writingPrompts, cleanOutput } from '../src/writing.js'
 import { generateVideo } from '../src/video.js'
+import { generateVoice } from '../src/voice.js'
 import { assertRemoteUrl, extensionOf, imageSize } from '../src/util.js'
 
 async function withTemp(fn) {
@@ -77,6 +78,7 @@ test('导入星图会修掉悬空、成环与不存在的节点', () => {
 test('状态归一化会补默认值、清掉坏记录', () => {
   const state = normalizeState({
     images: [{ id: 'a', status: 'weird', references: ['r1.png', 'r2.png'] }, { nope: true }, null],
+    voices: [{ id: 'v1', text: 'hello', status: 'weird' }],
     docs: [{ id: 'd1', title: 'x' }],
     graphs: [{ id: 'g', name: 'g', nodes: [], edges: [] }],
     preferences: { imageCount: 9 },
@@ -84,6 +86,8 @@ test('状态归一化会补默认值、清掉坏记录', () => {
   assert.equal(state.images.length, 1)
   assert.equal(state.images[0].status, 'done')
   assert.deepEqual(state.images[0].references, ['r1.png', 'r2.png'])
+  assert.equal(state.voices.length, 1)
+  assert.equal(state.voices[0].status, 'done')
   assert.equal(state.docs.length, 1)
   assert.equal(state.graphs.length, 1)
   assert.equal(state.preferences.imageCount, 9)
@@ -223,6 +227,64 @@ test('节点类型与端口契约完整', () => {
     const node = createNode(type, 0, 0)
     assert.equal(node.type, type)
     assert.ok(node.id.startsWith('n_'))
+  }
+})
+
+test('语音服务按 OpenAI Audio Speech 形状请求', async () => {
+  const settings = {
+    voice: { baseUrl: 'https://example.com', model: 'tts-test', apiKey: 'key', voice: 'alloy', format: 'mp3', extra: '' },
+  }
+  const realFetch = globalThis.fetch
+  let body = null
+  globalThis.fetch = async (url, init = {}) => {
+    if (String(url).endsWith('/audio/speech')) {
+      body = JSON.parse(init.body)
+      return new Response(Buffer.from('ID3fake-audio'), { status: 200, headers: { 'content-type': 'audio/mpeg' } })
+    }
+    return new Response('not found', { status: 404 })
+  }
+  try {
+    const result = await generateVoice(settings, { text: '你好', voice: 'nova', format: 'mp3' })
+    assert.equal(body.input, '你好')
+    assert.equal(body.voice, 'nova')
+    assert.equal(body.response_format, 'mp3')
+    assert.equal(result.ext, '.mp3')
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+test('MiniMax T2A 使用 t2a_v2 接口并解码 hex 音频', async () => {
+  const settings = {
+    voice: {
+      baseUrl: 'https://api.minimax.cn/v1/t2a_v2',
+      model: 'speech-2.8-hd',
+      apiKey: 'key',
+      voice: 'alloy',
+      format: 'wav',
+      extra: '',
+    },
+  }
+  const realFetch = globalThis.fetch
+  let calledUrl = ''
+  let body = null
+  globalThis.fetch = async (url, init = {}) => {
+    calledUrl = String(url)
+    body = JSON.parse(init.body)
+    return new Response(JSON.stringify({
+      base_resp: { status_code: 0, status_msg: 'success' },
+      data: { audio: Buffer.from('wave-bytes').toString('hex') },
+    }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  try {
+    const result = await generateVoice(settings, { text: '你好', voice: 'alloy', format: 'wav' })
+    assert.equal(calledUrl, 'https://api.minimax.cn/v1/t2a_v2')
+    assert.equal(body.voice_setting.voice_id, 'male-qn-qingse')
+    assert.equal(body.audio_setting.format, 'wav')
+    assert.equal(result.ext, '.wav')
+    assert.equal(result.buffer.toString(), 'wave-bytes')
+  } finally {
+    globalThis.fetch = realFetch
   }
 })
 

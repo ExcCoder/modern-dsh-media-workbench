@@ -155,6 +155,7 @@ pre { font-family: var(--mono); }
   transition: background 0.16s var(--ease), color 0.16s var(--ease), transform 0.16s var(--ease);
 }
 .rail-btn:hover { color: var(--ink); background: var(--surface-2); }
+.rail-link { text-decoration: none; }
 .rail-btn.is-on { color: var(--accent); background: var(--surface); box-shadow: var(--shadow-sm); }
 .rail-btn.is-on::before {
   content: "";
@@ -211,6 +212,24 @@ pre { font-family: var(--mono); }
 }
 .topbar-desc { color: var(--muted); font-size: 12.5px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar-side { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+
+.qq-chip {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.qq-chip:hover { border-color: var(--accent); color: var(--ink-2); background: var(--surface-2); }
+.qq-chip b { color: var(--ink-2); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.qq-copy { width: 28px; height: 28px; }
 
 .status-chip {
   display: inline-flex;
@@ -1009,6 +1028,26 @@ textarea { resize: vertical; line-height: 1.6; min-height: 44px; }
 .output-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; color: #fff; font-size: 11px; }
 .output-bar .btn { color: #fff; border-color: rgba(255,255,255,.2); }
 
+/* ---------- 语音 ---------- */
+.bench-voice { display: grid; grid-template-columns: minmax(330px, 370px) minmax(0, 1fr); }
+.voice-composer { min-height: 0; overflow-y: auto; padding: 20px 20px 24px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 14px; }
+.voice-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.voice-list { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 24px 32px; display: flex; flex-direction: column; gap: 10px; }
+.voice-card { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.voice-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 7px; }
+.voice-body audio { width: 100%; height: 34px; display: block; }
+.voice-body p { font-size: 12px; color: var(--ink-2); line-height: 1.6; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.voice-meta { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: var(--muted); }
+.voice-actions { display: flex; gap: 2px; flex: none; }
+.voice-actions .icon-btn { width: 28px; height: 28px; }
+.voice-card.is-busy { border-style: dashed; }
+.voice-card.is-error { border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
+.voice-error { color: var(--danger) !important; font-size: 11.5px !important; }
+.voice-empty { margin: auto; text-align: center; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 20px; }
+.voice-empty h3 { font-family: var(--serif); font-size: 18px; color: var(--ink); }
+.voice-empty p { font-size: 12px; }
+.empty-ic { color: var(--accent); }
+
 /* ---------- 设置 ---------- */
 .bench-settings { flex: 1; min-height: 0; overflow-y: auto; }
 .settings-scroll { max-width: 900px; margin: 0 auto; padding: 28px 28px 60px; display: flex; flex-direction: column; gap: 16px; }
@@ -1104,6 +1143,7 @@ kbd { font-family: var(--sans); font-size: 10px; padding: 1px 4px; border-radius
   .topbar { padding: 12px 18px 11px; }
   .topbar h1 { font-size: 20px; }
   .bench-image, .bench-video { grid-template-columns: minmax(290px, 330px) minmax(0, 1fr); }
+  .bench-voice { grid-template-columns: minmax(290px, 330px) minmax(0, 1fr); }
   .bench-write { grid-template-columns: 200px minmax(0, 1fr); }
   .ai-pane { display: none; }
   .bench-write.is-focus { grid-template-columns: 0 1fr; }
@@ -1115,9 +1155,12 @@ kbd { font-family: var(--sans); font-size: 10px; padding: 1px 4px; border-radius
 @media (max-width: 760px) {
   :root { --rail: 58px; }
   .topbar-side .status-chip span { display: none; }
+  .qq-chip span { display: none; }
   .status-chip { padding: 0 9px; }
   .topbar-desc { display: none; }
   .bench-image, .bench-video { grid-template-columns: 1fr; overflow-y: auto; }
+  .bench-voice { grid-template-columns: 1fr; overflow-y: auto; }
+  .voice-composer { border-right: 0; border-bottom: 1px solid var(--line); }
   .composer { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .gallery-pane { overflow: visible; }
   .gallery { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }

@@ -22,6 +22,7 @@ function seed() {
     version: STATE_VERSION,
     images: [],
     videos: [],
+    voices: [],
     docs: [
       {
         id: 'doc_welcome',
@@ -72,6 +73,7 @@ export function normalizeState(input) {
     version: STATE_VERSION,
     images: list(state.images, 300).map(normalizeImage),
     videos: list(state.videos, 150).map(normalizeVideo),
+    voices: list(state.voices, 150).map(normalizeVoice),
     docs: list(state.docs, 200).map(normalizeDoc),
     graphs: graphs.length ? graphs : base.graphs,
     blueprints: Array.isArray(state.blueprints) ? state.blueprints.slice(0, 60) : [],
@@ -124,8 +126,22 @@ function normalizeVideo(row) {
   }
 }
 
-function normalizeDoc(row) {
+function normalizeVoice(row) {
+  const status = ['queued', 'running', 'done', 'error'].includes(row.status) ? row.status : 'done'
   return {
+    id: row.id,
+    text: String(row.text ?? ''),
+    voice: String(row.voice ?? ''),
+    model: String(row.model ?? ''),
+    format: String(row.format ?? 'mp3'),
+    file: String(row.file ?? ''),
+    status,
+    error: String(row.error ?? ''),
+    createdAt: row.createdAt ?? new Date().toISOString(),
+  }
+}
+
+function normalizeDoc(row) {  return {
     id: row.id,
     title: String(row.title ?? '未命名作品'),
     content: String(row.content ?? ''),
@@ -221,6 +237,13 @@ export class Store {
         }
       }
       for (const row of state.videos) {
+        if (row.status === 'queued' || row.status === 'running') {
+          row.status = 'error'
+          row.error = '上次生成被中断，可以重试'
+          changed++
+        }
+      }
+      for (const row of state.voices) {
         if (row.status === 'queued' || row.status === 'running') {
           row.status = 'error'
           row.error = '上次生成被中断，可以重试'

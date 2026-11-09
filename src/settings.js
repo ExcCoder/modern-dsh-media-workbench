@@ -16,6 +16,12 @@ export const VIDEO_PRESETS = [
   { id: 'custom', name: '自定义', baseUrl: '', model: '', note: '兼容的异步视频接口，可在高级设置里改路径' },
 ]
 
+export const VOICE_PRESETS = [
+  { id: 'openai', name: 'OpenAI TTS', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini-tts', note: 'POST /audio/speech' },
+  { id: 'minimax', name: 'MiniMax Speech', baseUrl: 'https://api.minimax.cn/v1/t2a_v2', model: 'speech-2.8-hd', note: 'POST /t2a_v2，使用 voice_id' },
+  { id: 'custom', name: '自定义', baseUrl: '', model: '', note: 'OpenAI Audio Speech 或 MiniMax T2A 兼容接口' },
+]
+
 const DEFAULTS = {
   image: {
     preset: 'openai',
@@ -35,6 +41,15 @@ const DEFAULTS = {
     statusPath: '/videos/{id}',
     contentPath: '/videos/{id}/content',
     imageField: 'image',
+    extra: '',
+  },
+  voice: {
+    preset: 'openai',
+    baseUrl: '',
+    model: '',
+    apiKey: '',
+    voice: 'alloy',
+    format: 'mp3',
     extra: '',
   },
   language: 'auto',
@@ -125,11 +140,19 @@ export class Settings {
   async read() {
     try {
       const saved = JSON.parse(await readFile(this.file, 'utf8'))
+      const voice = { ...DEFAULTS.voice, ...(saved.voice ?? {}) }
+      if (/minimax|t2a_v2/i.test(voice.baseUrl)) {
+        if (voice.preset === 'openai') voice.preset = 'minimax'
+        if (['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'coral', 'verse', 'ballad', 'ash', 'sage', 'marin', 'cedar'].includes(voice.voice)) {
+          voice.voice = 'male-qn-qingse'
+        }
+      }
       return {
         ...DEFAULTS,
         ...saved,
         image: { ...DEFAULTS.image, ...(saved.image ?? {}) },
         video: { ...DEFAULTS.video, ...(saved.video ?? {}) },
+        voice,
         storage: { ...DEFAULTS.storage, ...(saved.storage ?? {}) },
       }
     } catch (err) {
@@ -171,6 +194,18 @@ export class Settings {
     if (typeof video.apiKey === 'string' && video.apiKey.trim()) next.video.apiKey = video.apiKey.trim().slice(0, 500)
     if (video.clearKey === true) next.video.apiKey = ''
 
+    const voice = patch.voice ?? {}
+    for (const key of ['preset', 'model', 'voice', 'format']) {
+      const value = trim(voice[key], 200)
+      if (value !== undefined) next.voice[key] = value
+    }
+    const voiceUrl = normalizeBaseUrl(voice.baseUrl)
+    if (voiceUrl !== undefined) next.voice.baseUrl = voiceUrl
+    const voiceExtra = normalizeExtra(voice.extra)
+    if (voiceExtra !== undefined) next.voice.extra = voiceExtra
+    if (typeof voice.apiKey === 'string' && voice.apiKey.trim()) next.voice.apiKey = voice.apiKey.trim().slice(0, 500)
+    if (voice.clearKey === true) next.voice.apiKey = ''
+
     const storage = patch.storage ?? {}
     const outputDir = normalizeOutputDir(storage.outputDir)
     if (outputDir !== undefined) {
@@ -208,6 +243,10 @@ export function videoKey(settings) {
   return settings.video.apiKey || process.env.MEDIA_WORKBENCH_VIDEO_API_KEY || ''
 }
 
+export function voiceKey(settings) {
+  return settings.voice.apiKey || process.env.MEDIA_WORKBENCH_VOICE_API_KEY || ''
+}
+
 export function imageReady(settings) {
   return Boolean(settings.image.baseUrl && settings.image.model && imageKey(settings))
 }
@@ -216,18 +255,27 @@ export function videoReady(settings) {
   return Boolean(settings.video.baseUrl && settings.video.model && videoKey(settings))
 }
 
+export function voiceReady(settings) {
+  return Boolean(settings.voice.baseUrl && settings.voice.model && voiceKey(settings))
+}
+
 export function publicSettings(settings) {
   const image = { ...settings.image }
   const video = { ...settings.video }
+  const voice = { ...settings.voice }
   const imageHint = image.apiKey ? image.apiKey.slice(-4) : ''
   const videoHint = video.apiKey ? video.apiKey.slice(-4) : ''
+  const voiceHint = voice.apiKey ? voice.apiKey.slice(-4) : ''
   delete image.apiKey
   delete video.apiKey
+  delete voice.apiKey
   return {
     ...settings,
     image: { ...image, hasKey: Boolean(imageKey(settings)), keyHint: imageHint },
     video: { ...video, hasKey: Boolean(videoKey(settings)), keyHint: videoHint },
+    voice: { ...voice, hasKey: Boolean(voiceKey(settings)), keyHint: voiceHint },
     imageReady: imageReady(settings),
     videoReady: videoReady(settings),
+    voiceReady: voiceReady(settings),
   }
 }
