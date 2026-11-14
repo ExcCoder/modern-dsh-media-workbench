@@ -96,6 +96,8 @@ function normalizeImage(row) {
     size: String(row.size ?? ''),
     reference: String(row.reference ?? references[0] ?? ''),
     references,
+    source: String(row.source ?? ''),
+    mode: row.mode === 'outpaint' ? 'outpaint' : row.mode === 'inpaint' ? 'inpaint' : '',
     file: String(row.file ?? ''),
     width: Number(row.width) || 0,
     height: Number(row.height) || 0,

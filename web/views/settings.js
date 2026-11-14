@@ -1,5 +1,5 @@
 import { api } from '../lib/api.js'
-import { $, esc } from '../lib/dom.js'
+import { $, $$, esc } from '../lib/dom.js'
 import { icon } from '../lib/icons.js'
 import { app, t } from '../lib/state.js'
 
@@ -13,8 +13,14 @@ export function mount(root) {
     { id: 'minimax', name: 'MiniMax Speech', baseUrl: 'https://api.minimax.cn/v1/t2a_v2', model: 'speech-2.8-hd' },
     { id: 'custom', name: '自定义', baseUrl: '', model: '' },
   ]
+  const writingPresets = app.writingPresets?.length ? app.writingPresets : [
+    { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+    { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+    { id: 'custom', name: '自定义', baseUrl: '', model: '' },
+  ]
   let testImage = ''
   let busy = false
+  const writing = settings.writing ?? {}
 
   root.innerHTML = `
     <section class="bench bench-settings">
@@ -22,24 +28,24 @@ export function mount(root) {
         <header class="settings-hero">
           <span class="eyebrow">${esc(t('工作台设置', 'WORKBENCH SETTINGS'))}</span>
           <h2>${esc(t('把接口接上，其余都在本机', 'Connect providers. Everything else stays local.'))}</h2>
-          <p>${esc(t('写作走 DSH 当前模型，不需要在这里填密钥；生图和视频各自填写自己的接口。密钥只保存在本机 settings.json（权限 600），不会回传给浏览器。', 'Writing uses the current DSH model. Image and video providers each have their own endpoint. Keys stay in a local settings.json (mode 600) and are never sent back to the browser.'))}</p>
+          <p>${esc(t('生图、视频、语音、写作各自独立配置，每个都能存多套供应商。写作不配就走 DSH 当前模型。密钥只保存在本机 settings.json（权限 600），不会回传给浏览器。', 'Image, video, voice and writing are configured separately, each with its own provider list. Writing falls back to the current DSH model. Keys stay in a local settings.json (mode 600) and are never sent back to the browser.'))}</p>
         </header>
 
         <section class="settings-card" id="image-card">
           <header class="settings-head">
-            <div class="settings-title"><span class="settings-ic" style="--c:#8a6fd1">${icon('image', 18)}</span><div><h3>${esc(t('生图服务', 'Image provider'))}</h3><p>${esc(t('兼容 OpenAI Images API：POST /images/generations，参考图走 /images/edits。', 'OpenAI Images compatible: POST /images/generations, edits at /images/edits.'))}</p></div></div>
+            <div class="settings-title"><span class="settings-ic" style="--c:#8a6fd1">${icon('image', 18)}</span><div><h3>${esc(t('生图服务', 'Image provider'))}</h3><p>${esc(t('兼容 OpenAI Images API：POST /images/generations，参考图走 /images/edits。可以存多套供应商随时切换。', 'OpenAI Images compatible. Keep several providers and switch between them.'))}</p></div></div>
             <span class="ready-pill ${settings.imageReady ? 'is-ok' : 'is-off'}" id="image-ready"><i></i>${settings.imageReady ? t('已就绪', 'Ready') : t('未配置', 'Not set')}</span>
           </header>
+          ${providerRow('image')}
           <div class="settings-grid">
+            ${nameField('image')}
             <label class="field"><span class="field-label">${esc(t('服务预设', 'Preset'))}</span>
               <select class="select" id="image-preset">${(app.imagePresets ?? []).map(p => `<option value="${p.id}" ${p.id === image.preset ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
             </label>
             <label class="field"><span class="field-label">${esc(t('接口地址', 'Base URL'))}</span>
               <input class="input" id="image-base" value="${esc(image.baseUrl ?? '')}" placeholder="https://api.openai.com/v1" spellcheck="false">
             </label>
-            <label class="field"><span class="field-label">${esc(t('模型', 'Model'))}</span>
-              <input class="input" id="image-model" value="${esc(image.model ?? '')}" placeholder="gpt-image-1" spellcheck="false">
-            </label>
+            ${modelField('image')}
             <label class="field"><span class="field-label">${esc(t('密钥', 'API key'))}</span>
               <input class="input" id="image-key" type="password" autocomplete="off" placeholder="${image.hasKey ? esc(t('已保存（尾号 ', 'Saved (ends ') + esc(image.keyHint ?? '') + '）') : 'sk-…'}">
             </label>
@@ -68,16 +74,16 @@ export function mount(root) {
             <div class="settings-title"><span class="settings-ic" style="--c:#3f8f92">${icon('film', 18)}</span><div><h3>${esc(t('视频服务', 'Video provider'))}</h3><p>${esc(t('异步任务接口：POST 创建任务，轮询状态，完成后下载。', 'Async task API: POST to create, poll status, download when done.'))}</p></div></div>
             <span class="ready-pill ${settings.videoReady ? 'is-ok' : 'is-off'}" id="video-ready"><i></i>${settings.videoReady ? t('已就绪', 'Ready') : t('未配置', 'Not set')}</span>
           </header>
+          ${providerRow('video')}
           <div class="settings-grid">
+            ${nameField('video')}
             <label class="field"><span class="field-label">${esc(t('服务预设', 'Preset'))}</span>
               <select class="select" id="video-preset">${(app.videoPresets ?? []).map(p => `<option value="${p.id}" ${p.id === video.preset ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
             </label>
             <label class="field"><span class="field-label">${esc(t('接口地址', 'Base URL'))}</span>
               <input class="input" id="video-base" value="${esc(video.baseUrl ?? '')}" placeholder="https://api.openai.com/v1" spellcheck="false">
             </label>
-            <label class="field"><span class="field-label">${esc(t('模型', 'Model'))}</span>
-              <input class="input" id="video-model" value="${esc(video.model ?? '')}" placeholder="sora-2" spellcheck="false">
-            </label>
+            ${modelField('video')}
             <label class="field"><span class="field-label">${esc(t('密钥', 'API key'))}</span>
               <input class="input" id="video-key" type="password" autocomplete="off" placeholder="${video.hasKey ? esc(t('已保存（尾号 ', 'Saved (ends ') + esc(video.keyHint ?? '') + '）') : 'sk-…'}">
             </label>
@@ -100,16 +106,16 @@ export function mount(root) {
             <div class="settings-title"><span class="settings-ic" style="--c:#b4833e">${icon('mic', 18)}</span><div><h3>${esc(t('语音服务', 'Voice provider'))}</h3><p>${esc(t('兼容 OpenAI Audio Speech：POST /audio/speech，返回音频文件。语音工作台需要单独配置。', 'OpenAI Audio Speech compatible: POST /audio/speech. The Voice Studio uses this separate provider.'))}</p></div></div>
             <span class="ready-pill ${settings.voiceReady ? 'is-ok' : 'is-off'}" id="voice-ready"><i></i>${settings.voiceReady ? t('已就绪', 'Ready') : t('未配置', 'Not set')}</span>
           </header>
+          ${providerRow('voice')}
           <div class="settings-grid">
+            ${nameField('voice')}
             <label class="field"><span class="field-label">${esc(t('服务预设', 'Preset'))}</span>
               <select class="select" id="voice-preset">${voicePresets.map(p => `<option value="${p.id}" ${p.id === voice.preset ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
             </label>
             <label class="field"><span class="field-label">${esc(t('接口地址', 'Base URL'))}</span>
               <input class="input" id="voice-base" value="${esc(voice.baseUrl ?? '')}" placeholder="https://api.openai.com/v1" spellcheck="false">
             </label>
-            <label class="field"><span class="field-label">${esc(t('模型', 'Model'))}</span>
-              <input class="input" id="voice-model" value="${esc(voice.model ?? 'gpt-4o-mini-tts')}" placeholder="gpt-4o-mini-tts" spellcheck="false">
-            </label>
+            ${modelField('voice')}
             <label class="field"><span class="field-label">${esc(t('密钥', 'API key'))}</span>
               <input class="input" id="voice-key" type="password" autocomplete="off" placeholder="${voice.hasKey ? esc(t('已保存（尾号 ', 'Saved (ends ') + esc(voice.keyHint ?? '') + '）') : 'sk-…'}">
             </label>
@@ -131,11 +137,34 @@ export function mount(root) {
           </footer>
         </section>
 
-        <section class="settings-card">
+        <section class="settings-card" id="writing-card">
           <header class="settings-head">
-            <div class="settings-title"><span class="settings-ic" style="--c:#b4833e">${icon('pen', 18)}</span><div><h3>${esc(t('写作模型', 'Writing model'))}</h3><p>${esc(t('使用 DSH 当前默认模型；在 DSH 的模型选择里切换。', 'Uses the current DSH default model; switch it in DSH.'))}</p></div></div>
-            <span class="ready-pill ${app.model ? 'is-ok' : 'is-off'}"><i></i>${app.model ? esc(app.model.label) : t('未连接', 'Not connected')}</span>
+            <div class="settings-title"><span class="settings-ic" style="--c:#b4833e">${icon('pen', 18)}</span><div><h3>${esc(t('写作模型', 'Writing model'))}</h3><p>${esc(t('不配就用 DSH 当前模型；配了就走这里的 /chat/completions，可以存多套随时切。', 'Leave empty to use the current DSH model; configuring a provider calls its /chat/completions and you can keep several.'))}</p></div></div>
+            <span class="ready-pill ${settings.writingReady ? 'is-ok' : 'is-off'}" id="writing-ready"><i></i>${settings.writingReady ? t('用自配供应商', 'Custom provider') : (app.model ? esc(app.model.label) : t('未连接', 'Not connected'))}</span>
           </header>
+          ${providerRow('writing')}
+          <div class="settings-grid">
+            ${nameField('writing')}
+            <label class="field"><span class="field-label">${esc(t('服务预设', 'Preset'))}</span>
+              <select class="select" id="writing-preset">${writingPresets.map(p => `<option value="${p.id}" ${p.id === writing.preset ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+            </label>
+            <label class="field"><span class="field-label">${esc(t('接口地址', 'Base URL'))}</span>
+              <input class="input" id="writing-base" value="${esc(writing.baseUrl ?? '')}" placeholder="https://api.deepseek.com/v1" spellcheck="false">
+            </label>
+            ${modelField('writing')}
+            <label class="field"><span class="field-label">${esc(t('密钥', 'API key'))}</span>
+              <input class="input" id="writing-key" type="password" autocomplete="off" placeholder="${writing.hasKey ? esc(t('已保存（尾号 ', 'Saved (ends ') + esc(writing.keyHint ?? '') + '）') : 'sk-…'}">
+            </label>
+            <label class="field field-wide"><span class="field-label">${esc(t('附加参数 JSON', 'Extra JSON'))}</span>
+              <textarea id="writing-extra" rows="2" spellcheck="false" placeholder='{"temperature":0.8}'>${esc(writing.extra ?? '')}</textarea>
+            </label>
+          </div>
+          <footer class="settings-actions">
+            <span class="fine">${writing.hasKey ? esc(t('密钥已存在，留空表示不修改。', 'A key exists; leave blank to keep it.')) : esc(t('留空则继续用 DSH 当前模型，不消耗这里的额度。', 'Leave empty to keep using the DSH model.'))}</span>
+            <span class="spacer"></span>
+            ${writing.hasKey ? `<button class="text-btn danger-quiet" id="writing-clear-key">${esc(t('清除密钥', 'Clear key'))}</button>` : ''}
+            <button class="btn btn-small btn-primary" id="writing-save">${esc(t('保存', 'Save'))}</button>
+          </footer>
         </section>
 
         <section class="settings-card">
@@ -180,6 +209,187 @@ export function mount(root) {
 
   const field = id => $('#' + id)
 
+  /** 设置页的 update 是空实现，切换供应商后要自己重挂一次 */
+  function remount() {
+    mount(root)
+  }
+
+  const KIND_NAME = { image: ['生图', 'image'], video: ['视频', 'video'], voice: ['语音', 'voice'], writing: ['写作', 'writing'] }
+
+  function sectionOf(kind) {
+    return app.settings?.[kind] ?? {}
+  }
+  function activeOf(kind) {
+    const section = sectionOf(kind)
+    return (section.providers ?? []).find(item => item.id === section.activeId) ?? null
+  }
+
+  /** 供应商卡片行，四个板块共用 */
+  function providerRow(kind) {
+    const section = sectionOf(kind)
+    const list = section.providers ?? []
+    return `<div class="provider-row">
+      <div class="provider-chips" data-chips="${kind}">
+        ${list.map(item => `<button type="button" class="provider-chip ${item.id === section.activeId ? 'is-on' : ''}" data-provider="${esc(item.id)}" data-kind="${kind}">
+          <b>${esc(item.name || t('未命名', 'Untitled'))}</b>
+          <small>${esc(item.model || t('未填模型', 'No model'))}</small>
+          <i class="provider-dot ${item.hasKey ? 'is-ok' : ''}" title="${item.hasKey ? esc(t('已存密钥', 'Key saved')) : esc(t('没有密钥', 'No key'))}"></i>
+        </button>`).join('') || `<span class="fine">${esc(t('还没有供应商。填下面的地址保存，会自动建一条。', 'No providers yet. Filling the fields below creates one.'))}</span>`}
+      </div>
+      <div class="provider-actions">
+        <button type="button" class="btn btn-small btn-ghost" data-provider-add="${kind}">${icon('plus', 13)}${esc(t('新增', 'New'))}</button>
+        ${list.length ? `<button type="button" class="btn btn-small btn-ghost danger-quiet" data-provider-remove="${kind}">${esc(t('删除', 'Delete'))}</button>` : ''}
+      </div>
+    </div>`
+  }
+
+  function nameField(kind) {
+    const active = activeOf(kind)
+    if (!active) return ''
+    return `<label class="field"><span class="field-label">${esc(t('名称', 'Name'))}</span>
+      <input class="input" id="${kind}-name" value="${esc(active.name ?? '')}" placeholder="${esc(t('例如：主力网关', 'e.g. main gateway'))}" spellcheck="false">
+    </label>`
+  }
+
+  /** 模型输入 + 从接口拉下来的可选列表 */
+  function modelField(kind) {
+    const section = sectionOf(kind)
+    const active = activeOf(kind)
+    const models = active?.models ?? []
+    const current = section.model ?? ''
+    return `<div class="field field-wide">
+      <span class="field-label">
+        <span>${esc(t('模型', 'Model'))}</span>
+        <span class="field-aside">
+          <button type="button" class="text-btn" data-model-fetch="${kind}">${esc(t('从接口获取', 'Fetch from API'))}</button>
+          <span class="fine" data-model-hint="${kind}">${models.length ? esc(t(`${models.length} 个可选`, `${models.length} available`)) : esc(t('还没拉取过', 'Not fetched yet'))}</span>
+        </span>
+      </span>
+      <input class="input" id="${kind}-model" value="${esc(current)}" placeholder="${esc(t('点下面的模型，或直接输入模型名', 'Pick a model below, or type one'))}" spellcheck="false">
+      <div class="model-list" data-model-list="${kind}">
+        ${models.length
+          ? models.map(name => `<button type="button" class="model-chip ${name === current ? 'is-on' : ''}" data-model="${esc(name)}" data-kind="${kind}">${esc(name)}</button>`).join('')
+          : `<span class="fine">${esc(t('填好地址和密钥，点「从接口获取」把这个供应商的模型拉下来。', 'Fill the URL and key, then fetch the model list from the API.'))}</span>`}
+      </div>
+    </div>`
+  }
+
+  async function patchSection(kind, body, { toast = '', silent = false } = {}) {
+    if (busy) return null
+    busy = true
+    try {
+      const data = await api('settings', { [kind]: body })
+      app.settings = data.settings
+      await app.refresh()
+      if (toast && !silent) app.toast(toast, 'success')
+      return data
+    } catch (err) {
+      if (!silent) app.toast(err.message, 'error')
+      return null
+    } finally {
+      busy = false
+    }
+  }
+
+  async function switchProvider(kind, id) {
+    if (busy || id === sectionOf(kind).activeId) return
+    const data = await patchSection(kind, { activeId: id })
+    if (data) remount()
+  }
+
+  async function addProvider(kind) {
+    const label = KIND_NAME[kind] ? t(KIND_NAME[kind][0], KIND_NAME[kind][1]) : kind
+    const data = await patchSection(kind, { provider: { name: t(`新${label}供应商`, `New ${kind} provider`), preset: 'openai', baseUrl: '', model: '' } }, {
+      toast: t('已新增，填好地址和密钥再保存', 'Added. Fill the URL and key, then save.'),
+    })
+    if (data) remount()
+  }
+
+  async function removeProvider(kind) {
+    const active = activeOf(kind)
+    if (busy || !active) return
+    const ok = await app.confirm({
+      title: t('删除这个供应商？', 'Delete this provider?'),
+      message: t(`会移除「${active.name}」的地址、密钥和模型列表。`, `Removes the URL, key and model list of ${active.name}.`),
+      confirmText: t('删除', 'Delete'),
+      danger: true,
+    })
+    if (!ok) return
+    const data = await patchSection(kind, { removeProvider: active.id })
+    if (data) remount()
+  }
+
+  /** 拉取某个板块当前供应商的模型列表并存下来 */
+  async function detectModels(kind, { quiet = false } = {}) {
+    if (busy) return null
+    const button = document.querySelector(`[data-model-fetch="${kind}"]`)
+    const hint = document.querySelector(`[data-model-hint="${kind}"]`)
+    const active = activeOf(kind)
+    busy = true
+    if (button) button.disabled = true
+    if (hint) hint.textContent = t('获取中…', 'Fetching…')
+    try {
+      const body = {
+        kind,
+        baseUrl: field(`${kind}-base`)?.value.trim() ?? '',
+        apiKey: field(`${kind}-key`)?.value.trim() ?? '',
+      }
+      if (active) body.id = active.id
+      const data = await api('models/detect', body)
+      if (data.settings) app.settings = data.settings
+      const list = data.models ?? []
+      if (hint) hint.textContent = t(`${list.length} 个可选`, `${list.length} available`)
+      const box = document.querySelector(`[data-model-list="${kind}"]`)
+      const input = field(`${kind}-model`)
+      if (box) {
+        box.innerHTML = list.length
+          ? list.map(name => `<button type="button" class="model-chip ${name === input?.value.trim() ? 'is-on' : ''}" data-model="${esc(name)}" data-kind="${kind}">${esc(name)}</button>`).join('')
+          : `<span class="fine">${esc(t('接口没有返回模型。', 'The API returned no models.'))}</span>`
+      }
+      if (list.length && !input?.value.trim()) input.value = list[0]
+      if (!quiet) app.toast(t(`获取到 ${list.length} 个模型`, `Found ${list.length} model(s)`), 'success')
+      return list
+    } catch (err) {
+      if (hint) hint.textContent = ''
+      if (!quiet) app.toast(err.message, 'error')
+      return null
+    } finally {
+      busy = false
+      if (button) button.disabled = false
+    }
+  }
+
+  document.querySelectorAll('[data-chips]').forEach(box => {
+    box.addEventListener('click', event => {
+      const chip = event.target.closest('[data-provider]')
+      if (chip) switchProvider(box.dataset.chips, chip.dataset.provider)
+    })
+  })
+  document.querySelectorAll('[data-provider-add]').forEach(button => {
+    button.addEventListener('click', () => addProvider(button.dataset.providerAdd))
+  })
+  document.querySelectorAll('[data-provider-remove]').forEach(button => {
+    button.addEventListener('click', () => removeProvider(button.dataset.providerRemove))
+  })
+  document.querySelectorAll('[data-model-fetch]').forEach(button => {
+    button.addEventListener('click', () => detectModels(button.dataset.modelFetch))
+  })
+  document.querySelectorAll('[data-model-list]').forEach(box => {
+    box.addEventListener('click', async event => {
+      const chip = event.target.closest('[data-model]')
+      if (!chip) return
+      const kind = box.dataset.modelList
+      const model = chip.dataset.model
+      field(`${kind}-model`).value = model
+      box.querySelectorAll('.model-chip').forEach(item => item.classList.toggle('is-on', item === chip))
+      const active = activeOf(kind)
+      const body = { model }
+      if (active) body.provider = { id: active.id }
+      const data = await patchSection(kind, body, { toast: t(`已选用 ${model}`, `Using ${model}`) })
+      if (data) remount()
+    })
+  })
+
   // 预设联动
   field('image-preset').addEventListener('change', () => {
     const preset = (app.imagePresets ?? []).find(p => p.id === field('image-preset').value)
@@ -198,81 +408,82 @@ export function mount(root) {
     if (preset?.id === 'minimax' && field('voice-name').value === 'alloy') field('voice-name').value = 'male-qn-qingse'
     if (preset?.id === 'openai' && field('voice-name').value === 'male-qn-qingse') field('voice-name').value = 'alloy'
   })
+  field('writing-preset').addEventListener('change', () => {
+    const preset = writingPresets.find(p => p.id === field('writing-preset').value)
+    if (preset?.baseUrl) field('writing-base').value = preset.baseUrl
+    if (preset?.model) field('writing-model').value = preset.model
+  })
 
-  async function saveImage() {
+  /**
+   * 保存某个板块：写表单字段 + 当前供应商名称，保存后按需自动拉一次模型。
+   * @param {string} kind image / video / voice / writing
+   * @param {object} extra 该板块特有的字段
+   */
+  async function saveKind(kind, extra = {}) {
     if (busy) return
     busy = true
     try {
-      const data = await api('settings', {
-        image: {
-          preset: field('image-preset').value,
-          baseUrl: field('image-base').value,
-          model: field('image-model').value,
-          size: field('image-size').value,
-          quality: field('image-quality').value,
-          extra: field('image-extra').value,
-          apiKey: field('image-key').value,
-        },
-      })
+      const active = activeOf(kind)
+      const payload = {
+        preset: field(`${kind}-preset`).value,
+        baseUrl: field(`${kind}-base`).value,
+        model: field(`${kind}-model`).value,
+        apiKey: field(`${kind}-key`).value,
+        ...extra,
+      }
+      const nameEl = field(`${kind}-name`)
+      if (active) payload.provider = { id: active.id, name: nameEl ? nameEl.value : active.name }
+      const data = await api('settings', { [kind]: payload })
       app.settings = data.settings
-      field('image-key').value = ''
-      app.toast(t('生图设置已保存', 'Image settings saved'), 'success')
+      field(`${kind}-key`).value = ''
+      const label = KIND_NAME[kind] ? t(KIND_NAME[kind][0], KIND_NAME[kind][1]) : kind
+      app.toast(t(`${label}设置已保存`, `${kind} settings saved`), 'success')
       await app.refresh()
+
+      // 地址换了或者还没拉过模型，保存后自动去接口取一次
+      const savedId = data.settings[kind].activeId
+      const saved = (data.settings[kind].providers ?? []).find(item => item.id === savedId)
+      const stale = saved && saved.baseUrl && saved.hasKey
+        && (!saved.models?.length || saved.modelsBase !== saved.baseUrl)
+      if (stale) {
+        busy = false
+        const list = await detectModels(kind, { quiet: true })
+        busy = true
+        // 之前没选模型就自动落到第一个，省得用户再点一次
+        if (list?.length && !saved?.model) {
+          field(`${kind}-model`).value = list[0]
+          try {
+            const picked = await api('settings', { [kind]: { model: list[0], provider: { id: savedId } } })
+            app.settings = picked.settings
+            await app.refresh()
+          } catch { /* 自动选模型失败不影响已保存的内容 */ }
+        }
+      }
+      remount()
     } catch (err) { app.toast(err.message, 'error') }
     finally { busy = false }
   }
 
-  async function saveVideo() {
-    if (busy) return
-    busy = true
-    try {
-      const data = await api('settings', {
-        video: {
-          preset: field('video-preset').value,
-          baseUrl: field('video-base').value,
-          model: field('video-model').value,
-          createPath: field('video-create').value,
-          statusPath: field('video-status').value,
-          contentPath: field('video-content').value,
-          imageField: field('video-field').value,
-          extra: field('video-extra').value,
-          apiKey: field('video-key').value,
-        },
-      })
-      app.settings = data.settings
-      field('video-key').value = ''
-      app.toast(t('视频设置已保存', 'Video settings saved'), 'success')
-      await app.refresh()
-    } catch (err) { app.toast(err.message, 'error') }
-    finally { busy = false }
-  }
-
-  async function saveVoice() {
-    if (busy) return
-    busy = true
-    try {
-      const data = await api('settings', {
-        voice: {
-          preset: field('voice-preset').value,
-          baseUrl: field('voice-base').value,
-          model: field('voice-model').value,
-          voice: field('voice-name').value,
-          format: field('voice-format').value,
-          extra: field('voice-extra').value,
-          apiKey: field('voice-key').value,
-        },
-      })
-      app.settings = data.settings
-      field('voice-key').value = ''
-      app.toast(t('语音设置已保存', 'Voice settings saved'), 'success')
-      await app.refresh()
-    } catch (err) { app.toast(err.message, 'error') }
-    finally { busy = false }
-  }
-
-  field('image-save').addEventListener('click', saveImage)
-  field('video-save').addEventListener('click', saveVideo)
-  field('voice-save').addEventListener('click', saveVoice)
+  field('image-save').addEventListener('click', () => saveKind('image', {
+    size: field('image-size').value,
+    quality: field('image-quality').value,
+    extra: field('image-extra').value,
+  }))
+  field('video-save').addEventListener('click', () => saveKind('video', {
+    createPath: field('video-create').value,
+    statusPath: field('video-status').value,
+    contentPath: field('video-content').value,
+    imageField: field('video-field').value,
+    extra: field('video-extra').value,
+  }))
+  field('voice-save').addEventListener('click', () => saveKind('voice', {
+    voice: field('voice-name').value,
+    format: field('voice-format').value,
+    extra: field('voice-extra').value,
+  }))
+  field('writing-save').addEventListener('click', () => saveKind('writing', {
+    extra: field('writing-extra').value,
+  }))
 
   async function saveOutputDir(value) {
     if (busy) return
@@ -310,6 +521,14 @@ export function mount(root) {
       const data = await api('settings', { voice: { clearKey: true } })
       app.settings = data.settings
       app.toast(t('已清除语音密钥', 'Voice key cleared'), 'success')
+      await app.refresh()
+    } catch (err) { app.toast(err.message, 'error') }
+  })
+  field('writing-clear-key')?.addEventListener('click', async () => {
+    try {
+      const data = await api('settings', { writing: { clearKey: true } })
+      app.settings = data.settings
+      app.toast(t('已清除写作密钥', 'Writing key cleared'), 'success')
       await app.refresh()
     } catch (err) { app.toast(err.message, 'error') }
   })

@@ -19,6 +19,7 @@ mkdirSync(join(DEV_HOME, 'media-workbench-modern'), { recursive: true })
 writeFileSync(join(DEV_HOME, 'media-workbench-modern', 'settings.json'), JSON.stringify({
   image: { preset: 'custom', baseUrl: `${ORIGIN}/mock/v1`, model: 'mock-image', apiKey: 'dev-key', size: '1024x1024', quality: '', extra: '' },
   video: { preset: 'custom', baseUrl: `${ORIGIN}/mock/v1`, model: 'mock-video', apiKey: 'dev-key', createPath: '/videos', statusPath: '/videos/{id}', contentPath: '/videos/{id}/content', imageField: 'image', extra: '' },
+  voice: { preset: 'custom', baseUrl: `${ORIGIN}/mock/v1`, model: 'mock-voice', apiKey: 'dev-key', voice: 'alloy', format: 'wav', extra: '' },
   language: 'auto',
 }, null, 2))
 
@@ -122,6 +123,34 @@ const frames = new Map()
 let frameSeq = 0
 let mockVideo = null
 
+// 一段真的 wav，语音卡片才能正常播放
+function makeWav(seconds = 1.4, rate = 22050) {
+  const samples = Math.floor(rate * seconds)
+  const data = Buffer.alloc(samples * 2)
+  for (let i = 0; i < samples; i++) {
+    const t = i / rate
+    const envelope = Math.min(1, t * 8) * Math.min(1, (seconds - t) * 8)
+    const value = Math.sin(t * 2 * Math.PI * 220) * 0.35 + Math.sin(t * 2 * Math.PI * 330) * 0.18
+    data.writeInt16LE(Math.round(value * envelope * 12000), i * 2)
+  }
+  const header = Buffer.alloc(44)
+  header.write('RIFF', 0)
+  header.writeUInt32LE(36 + data.length, 4)
+  header.write('WAVE', 8)
+  header.write('fmt ', 12)
+  header.writeUInt32LE(16, 16)
+  header.writeUInt16LE(1, 20)
+  header.writeUInt16LE(1, 22)
+  header.writeUInt32LE(rate, 24)
+  header.writeUInt32LE(rate * 2, 28)
+  header.writeUInt16LE(2, 32)
+  header.writeUInt16LE(16, 34)
+  header.write('data', 36)
+  header.writeUInt32LE(data.length, 40)
+  return Buffer.concat([header, data])
+}
+const mockAudio = makeWav()
+
 // 用系统 ffmpeg 做一段真的 mp4，视频卡片才能正常播放
 try {
   const poster = join(DEV_HOME, 'mock-poster.png')
@@ -200,7 +229,17 @@ async function handleMock(req, res, url) {
   const chunks = []
   for await (const chunk of req) chunks.push(chunk)
   const raw = Buffer.concat(chunks)
-  const body = (() => { try { return JSON.parse(raw.toString('utf8') || '{}') } catch { return {} } })()
+  const contentType = req.headers['content-type'] || ''
+  let body = {}
+  if (/^multipart\/form-data/i.test(contentType)) {
+    try {
+      const request = new Request('http://local/', { method: 'POST', headers: { 'content-type': contentType }, body: raw })
+      const form = await request.formData()
+      body = { prompt: String(form.get('prompt') ?? ''), model: String(form.get('model') ?? '') }
+    } catch { body = {} }
+  } else {
+    body = (() => { try { return JSON.parse(raw.toString('utf8') || '{}') } catch { return {} } })()
+  }
 
   if (url.pathname === '/mock/v1/images/generations' && req.method === 'POST') {
     const prompt = String(body.prompt || 'untitled')
@@ -208,6 +247,15 @@ async function handleMock(req, res, url) {
     const [w, h] = size.split('x').map(Number)
     const png = makePng(Math.max(256, Math.min(1536, w || 1024)), Math.max(256, Math.min(1536, h || 1024)), prompt + Math.random())
     return send(200, { data: [{ b64_json: png.toString('base64'), revised_prompt: prompt }] })
+  }
+
+  if (url.pathname === '/mock/v1/audio/speech' && req.method === 'POST') {
+    return send(200, mockAudio, 'audio/wav')
+  }
+
+  if (url.pathname === '/mock/v1/images/edits' && req.method === 'POST') {
+    const prompt = String(body.prompt || 'untitled')
+    return send(200, { data: [{ b64_json: makePng(1024, 1024, prompt + Math.random()).toString('base64') }] })
   }
 
   if (url.pathname === '/mock/v1/videos' && req.method === 'POST') {

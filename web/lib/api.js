@@ -28,6 +28,12 @@ export async function upload(file) {
   return parse(res)
 }
 
+/** multipart 提交，用于图片编辑（原图 + 蒙版） */
+export async function uploadForm(path, form) {
+  const res = await fetch(BASE + path, { method: 'POST', body: form })
+  return parse(res)
+}
+
 /**
  * 写作流：NDJSON，每行一个 {type:'delta'|'done'|'error'}。
  */

@@ -1,6 +1,6 @@
 {
   "name": "@exccoder/dsh-media-workbench",
-  "version": "0.3.5",
+  "version": "0.6.0",
   "description": "DeepSeek Harness 插件「摩登-媒体工作室」：生图、写作、星图、视频四个工作台，带本机作品库与星图 DAG 编排。",
   "type": "module",
   "main": "src/index.js",

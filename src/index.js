@@ -7,11 +7,13 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createNode, dependencyClosure, normalizeGraph, RATIOS, templateGraph, topoWaves } from './graph.js'
 import { apply as applyTools } from './tools.js'
-import { generateImage } from './image.js'
+import { editImage, generateImage } from './image.js'
 import { modelInfo, streamText } from './llm.js'
-import { imageReady, IMAGE_PRESETS, publicSettings, Settings, VIDEO_PRESETS, videoReady, VOICE_PRESETS, voiceReady } from './settings.js'
+import { streamChat } from './chat.js'
+import { listModels } from './models.js'
+import { imageReady, IMAGE_PRESETS, PROVIDER_KINDS, publicSettings, Settings, VIDEO_PRESETS, videoReady, VOICE_PRESETS, voiceReady, WRITING_PRESETS, writingReady } from './settings.js'
 import { Store } from './store.js'
-import { clampInt, extensionOf, fail, imageSize, json, newId, readBuffer, readJson, safeJoin, sendFile, videoExtensionOf } from './util.js'
+import { clampInt, editModeOf, extensionOf, fail, imageSize, json, multipartFile, newId, readBuffer, readJson, readMultipart, safeJoin, sendFile, videoExtensionOf } from './util.js'
 import { generateStoryboard, generateVideo } from './video.js'
 import { generateVoice } from './voice.js'
 import { cleanOutput, writingPrompts } from './writing.js'
@@ -164,6 +166,41 @@ export function apply(ctx) {
     } finally {
       jobs.delete(id)
     }
+  }
+
+  async function saveEditedImage(form) {
+    const current = await settings.read()
+    if (!imageReady(current)) throw fail('还没有配置生图服务。打开「设置 → 生图服务」，填接口地址、模型和密钥。', 400)
+    const file = await multipartFile(form, 'file')
+    if (!file) throw fail('缺少文件', 400)
+    const prompt = String(form.get('prompt') ?? '').trim()
+    if (!prompt) throw fail('先写一句提示词', 400)
+    const mode = editModeOf(form.get('mode'))
+    const source = String(form.get('source') ?? '').replace(/[^\w.-]/g, '')
+    const id = newId('img')
+    const name = `${id}${extensionOf(file.buffer) ?? '.png'}`
+    await saveOutput(name, file.buffer)
+    const record = {
+      id,
+      prompt: prompt.slice(0, 3000),
+      negative: '',
+      style: String(form.get('style') ?? '').slice(0, 40),
+      model: String(form.get('model') || current.image.model).slice(0, 120),
+      size: String(form.get('size') ?? '').slice(0, 40),
+      reference: '',
+      references: [],
+      source,
+      mode,
+      file: name,
+      width: Number(form.get('width')) || 0,
+      height: Number(form.get('height')) || 0,
+      status: 'done',
+      error: '',
+      favorite: false,
+      createdAt: new Date().toISOString(),
+    }
+    await store.mutate(state => { state.images.unshift(record); state.images = state.images.slice(0, 300) })
+    return record
   }
 
   async function createImages(body) {
@@ -578,13 +615,24 @@ export function apply(ctx) {
     req.on('close', () => { if (!res.writableEnded) controller.abort() })
     const send = payload => { if (!res.writableEnded) res.write(`${JSON.stringify(payload)}\n`) }
     try {
-      const { text, model } = await streamText(ctx, {
-        system: prompts.system,
-        user: prompts.user,
-        maxTokens: 4000,
-        signal: controller.signal,
-        onDelta: delta => send({ type: 'delta', text: delta }),
-      })
+      const config = await settings.read()
+      // 配了写作供应商就走它自己的 /chat/completions，没配还是用 DSH 当前模型
+      const useProvider = writingReady(config)
+      const { text, model } = useProvider
+        ? await streamChat(config.writing, {
+            system: prompts.system,
+            user: prompts.user,
+            maxTokens: 4000,
+            signal: controller.signal,
+            onDelta: delta => send({ type: 'delta', text: delta }),
+          })
+        : await streamText(ctx, {
+            system: prompts.system,
+            user: prompts.user,
+            maxTokens: 4000,
+            signal: controller.signal,
+            onDelta: delta => send({ type: 'delta', text: delta }),
+          })
       send({ type: 'done', text: cleanOutput(text, prompts.action), model })
     } catch (err) {
       send({ type: 'error', message: controller.signal.aborted ? '已停止' : err.message })
@@ -650,6 +698,7 @@ export function apply(ctx) {
           imagePresets: IMAGE_PRESETS,
           videoPresets: VIDEO_PRESETS,
           voicePresets: VOICE_PRESETS,
+          writingPresets: WRITING_PRESETS,
           model: modelInfo(ctx),
           version: VERSION,
           dataDir: store.root,
@@ -687,6 +736,39 @@ export function apply(ctx) {
 
     if (method !== 'POST') return json(res, 405, { error: '不支持的方法' })
     if (api === 'upload') return handleUpload(req, res)
+    if (api === 'image/edit') {
+      // 浏览器已经把要改的区域裁好发过来，服务端只负责调模型
+      const form = await readMultipart(req)
+      const current = await settings.read()
+      if (!imageReady(current)) return json(res, 400, { error: '还没有配置生图服务' })
+      const imageFile = await multipartFile(form, 'image')
+      if (!imageFile) return json(res, 400, { error: '缺少原图' })
+      const prompt = String(form.get('prompt') ?? '').trim()
+      if (!prompt) return json(res, 400, { error: '先写一句提示词' })
+      const controller = new AbortController()
+      try {
+        const result = await editImage(current, {
+          prompt,
+          style: String(form.get('style') ?? ''),
+          size: String(form.get('size') ?? ''),
+          model: String(form.get('model') ?? ''),
+          image: imageFile.buffer,
+          imageType: imageFile.type,
+        }, { signal: controller.signal })
+        res.statusCode = 200
+        res.setHeader('content-type', result.ext === '.png' ? 'image/png' : `image/${result.ext.slice(1)}`)
+        res.setHeader('cache-control', 'no-store')
+        res.end(result.buffer)
+      } catch (err) {
+        json(res, err.status || 500, { error: err.message })
+      }
+      return
+    }
+    if (api === 'image/save') {
+      const form = await readMultipart(req)
+      const record = await saveEditedImage(form)
+      return json(res, 200, { item: record })
+    }
 
     const body = await readJson(req)
 
@@ -725,6 +807,27 @@ export function apply(ctx) {
         }
       }
       return json(res, 200, { settings: publicSettings(next) })
+    }
+    if (api === 'models/detect') {
+      // 拉某个供应商的模型列表并写进它的 models 字段
+      const current = await settings.read()
+      const kind = PROVIDER_KINDS.includes(String(body?.kind)) ? String(body.kind) : 'image'
+      const section = current[kind]
+      const id = String(body?.id ?? '')
+      const provider = (section.providers ?? []).find(item => item.id === id)
+      const baseUrl = String(body?.baseUrl ?? provider?.baseUrl ?? '').trim()
+      const apiKey = String(body?.apiKey ?? '').trim() || provider?.apiKey || section.apiKey || ''
+      if (!baseUrl) return json(res, 400, { error: '先填接口地址' })
+      try {
+        const { models } = await listModels({ baseUrl, apiKey })
+        if (provider) {
+          const next = await settings.update({ [kind]: { models: { id: provider.id, list: models, baseUrl } } })
+          return json(res, 200, { models, settings: publicSettings(next) })
+        }
+        return json(res, 200, { models })
+      } catch (err) {
+        return json(res, err.status || 500, { error: err.message })
+      }
     }
     if (api === 'settings/test-image') {
       const current = await settings.read()

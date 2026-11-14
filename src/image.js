@@ -147,4 +147,57 @@ export async function generateImage(settings, request, { signal, filesDir } = {}
   return { buffer, ext, width: size.width, height: size.height, revisedPrompt: result.revisedPrompt }
 }
 
+/**
+ * 图生图：把一张裁剪图交给 /images/edits，返回新图。
+ * 蒙版可选；不传蒙版时由模型自己决定改哪里，宿主端负责最终合成。
+ * @param {object} settings 插件设置
+ * @param {object} request {prompt, style, negative, size, quality, model, image, mask}
+ * @param {{signal?: AbortSignal}} options
+ * @returns {Promise<{buffer: Buffer, ext: string, width: number, height: number}>}
+ */
+export async function editImage(settings, request, { signal } = {}) {
+  const key = imageKey(settings)
+  if (!key) throw Object.assign(new Error('还没有配置生图密钥，去「设置 → 生图服务」填一个'), { status: 400 })
+  if (!settings.image.baseUrl || !settings.image.model) throw Object.assign(new Error('先填好生图接口地址和模型'), { status: 400 })
+  const prompt = styledPrompt(request.prompt, request.style)
+  if (!prompt) throw Object.assign(new Error('提示词为空'), { status: 400 })
+  if (!request.image?.length) throw Object.assign(new Error('缺少原图'), { status: 400 })
+  const extra = { ...extraOf(settings), ...(request.extra && typeof request.extra === 'object' ? request.extra : {}) }
+  if (request.negative) extra.negative_prompt = request.negative
+  const model = request.model || settings.image.model
+  const timeout = AbortSignal.timeout(TIMEOUT_MS)
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout
+
+  const form = new FormData()
+  form.set('model', model)
+  form.set('prompt', prompt)
+  form.set('n', '1')
+  // 传原始尺寸，服务端多数会原样返回；不传就会按默认方图重排构图
+  const requested = request.size || (request.imageSize ? `${request.imageSize.width}x${request.imageSize.height}` : '')
+  if (requested) form.set('size', requested)
+  if (request.quality) form.set('quality', request.quality)
+  for (const [k, v] of Object.entries(extra)) form.set(k, typeof v === 'string' ? v : JSON.stringify(v))
+  form.set('image', new Blob([request.image], { type: request.imageType || 'image/png' }), 'image.png')
+  if (request.mask?.length) form.set('mask', new Blob([request.mask], { type: 'image/png' }), 'mask.png')
+
+  const res = await fetch(`${settings.image.baseUrl}/images/edits`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${key}` },
+    body: form,
+    signal: combined,
+  })
+  const raw = await res.text()
+  let data = null
+  try { data = JSON.parse(raw) } catch { /* 网关偶尔返回 HTML */ }
+  if (!res.ok) throw Object.assign(new Error(explain(res.status, redact(data?.error?.message ?? data?.message ?? raw, key))), { status: res.status })
+  const entry = data?.data?.[0] ?? data?.images?.[0]
+  const result = await readEntry(entry, key, combined)
+  const { buffer } = result
+  if (buffer.length > MAX_BYTES) throw new Error('返回的图片太大')
+  const ext = extensionOf(buffer)
+  if (!ext) throw new Error('接口返回的内容不是图片')
+  const size = imageSize(buffer) ?? { width: 0, height: 0 }
+  return { buffer, ext, width: size.width, height: size.height }
+}
+
 export { styledPrompt }

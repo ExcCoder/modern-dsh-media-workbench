@@ -68,6 +68,24 @@ export async function readJson(req, limit = 2_000_000) {
   }
 }
 
+/** 解析 multipart/form-data，图片编辑用它带原图和蒙版 */
+export async function readMultipart(req, limit = 30_000_000) {
+  const contentType = req.headers['content-type'] || ''
+  if (!/^multipart\/form-data/i.test(contentType)) throw fail('请求格式不对', 400)
+  const raw = await readBuffer(req, limit)
+  const request = new Request('http://local/', { method: 'POST', headers: { 'content-type': contentType }, body: raw })
+  return request.formData()
+}
+
+/** 从 multipart 里取一个文件字段 */
+export async function multipartFile(form, name) {
+  const value = form.get(name)
+  if (!value || typeof value.arrayBuffer !== 'function') return null
+  const buffer = Buffer.from(await value.arrayBuffer())
+  if (!buffer.length) return null
+  return { buffer, type: value.type || 'application/octet-stream', name: value.name || '' }
+}
+
 /** 支持 Range，视频才能拖动和循环 */
 export async function sendFile(req, res, file, { cache = 'private, max-age=3600' } = {}) {
   const type = MIME[extname(file).toLowerCase()]
@@ -222,4 +240,10 @@ export function clampInt(value, min, max, fallback) {
 export function redact(text, secret) {
   const clean = String(text ?? '').slice(0, 400)
   return secret ? clean.split(secret).join('***') : clean
+}
+
+/** 图片编辑方式：edit 整图重写、outpaint 扩边、inpaint 局部重绘 */
+export function editModeOf(value) {
+  const mode = String(value ?? '')
+  return ['edit', 'outpaint', 'inpaint'].includes(mode) ? mode : 'inpaint'
 }

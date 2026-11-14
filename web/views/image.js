@@ -1,4 +1,4 @@
-import { api, fileUrl, upload } from '../lib/api.js'
+import { api, fileUrl, upload, uploadForm } from '../lib/api.js'
 import { $, $$, autoGrow, copyImage, copyText, downloadUrl, esc, fmtTime, modKey } from '../lib/dom.js'
 import { icon } from '../lib/icons.js'
 import { app, t } from '../lib/state.js'
@@ -39,6 +39,7 @@ export function mount(root) {
       <button type="button" role="menuitem" data-image-menu="download">${icon('download', 14)}${esc(t('下载原图', 'Download original'))}</button>
       <button type="button" role="menuitem" data-image-menu="reveal">${icon('folder', 14)}${esc(t('打开文件所在目录', 'Open containing folder'))}</button>
       <span class="image-menu-sep"></span>
+      <button type="button" role="menuitem" data-image-menu="edit">${icon('wand', 14)}${esc(t('局部重绘 / 扩图', 'Repaint / Outpaint'))}</button>
       <button type="button" role="menuitem" data-image-menu="prompt">${icon('pen', 14)}${esc(t('复制提示词', 'Copy prompt'))}</button>
     `
     document.body.appendChild(menu)
@@ -75,6 +76,10 @@ export function mount(root) {
             downloadUrl(fileUrl(row.file), `modern-media-${row.id}${row.file?.match(/\.\w+$/)?.[0] ?? '.png'}`)
           } else if (action === 'reveal') {
             await api('reveal', { file: row.file })
+          } else if (action === 'edit') {
+            setCreateMode(createMode === 'generate' ? 'inpaint' : createMode)
+            addSource({ name: row.file, url: fileUrl(row.file) })
+            app.toast(t('已加入源图，点「编辑当前选中」打开画布', 'Added as source; use Edit selected to open the canvas'), 'success')
           } else if (action === 'prompt') {
             const ok = await copyText(row.prompt)
             app.toast(ok ? t('提示词已复制', 'Prompt copied') : t('复制失败', 'Copy failed'), ok ? 'success' : 'error')
@@ -97,8 +102,39 @@ export function mount(root) {
           <button class="icon-btn" data-act="settings" title="${esc(t('生图设置', 'Image settings'))}">${icon('settings', 16)}</button>
         </div>
         <div class="provider-line" id="provider-line"></div>
+        <div class="field">
+          <span class="field-label">${esc(t('创作方式', 'Mode'))}</span>
+          <div class="seg seg-mode" id="create-mode">
+            <button type="button" data-mode="generate" class="is-on">${esc(t('生成', 'Generate'))}</button>
+            <button type="button" data-mode="edit">${esc(t('编辑', 'Edit'))}</button>
+            <button type="button" data-mode="outpaint">${esc(t('扩图', 'Outpaint'))}</button>
+            <button type="button" data-mode="inpaint">${esc(t('局部重绘', 'Inpaint'))}</button>
+          </div>
+          <p class="fine" id="mode-hint">${esc(t('从提示词生成新图片，参考图为可选。', 'Generate a new image from a prompt; references are optional.'))}</p>
+        </div>
+        <div class="source-panel" id="source-panel" hidden>
+          <div class="source-panel-head">
+            <span class="field-label">${esc(t('源图', 'Source'))}</span>
+            <span class="source-badge" id="source-badge">0 ${esc(t('张源图已就绪', 'ready'))}</span>
+          </div>
+          <div class="source-drop" id="source-drop" tabindex="0" role="button" aria-label="${esc(t('添加源图', 'Add source'))}">
+            <div class="source-empty" id="source-empty">
+              ${icon('upload', 16)}
+              <span>${esc(t('拖入、选择或 Ctrl+V 粘贴', 'Drop, choose or paste (Ctrl+V)'))}</span>
+              <small>${esc(t('支持 PNG / JPG / WebP', 'PNG / JPG / WebP'))}</small>
+            </div>
+            <div class="source-list" id="source-list"></div>
+          </div>
+          <div class="source-actions">
+            <button type="button" class="btn btn-small btn-ghost" id="source-local">${icon('upload', 13)}${esc(t('本地文件', 'Local file'))}</button>
+            <button type="button" class="btn btn-small btn-ghost" id="source-library">${icon('image', 13)}${esc(t('从作品库', 'From library'))}</button>
+            <button type="button" class="btn btn-small btn-ghost" id="source-canvas">${icon('edit', 13)}${esc(t('编辑当前选中', 'Edit selected'))}</button>
+          </div>
+          <p class="fine" id="source-hint">${esc(t('每张源图单独提交，各自带自己的蒙版和扩边。', 'Each source is submitted on its own with its own mask and expand.'))}</p>
+          <input type="file" id="source-file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+        </div>
         <label class="field field-prompt">
-          <span class="field-label">${esc(t('提示词', 'Prompt'))}<em id="prompt-count">0</em></span>
+          <span class="field-label"><span id="prompt-label">${esc(t('提示词', 'Prompt'))}</span><em id="prompt-count">0</em></span>
           <textarea id="prompt" rows="5" maxlength="2000" placeholder="${esc(t('描述主体、构图、光线、材质，以及不想出现的东西…', 'Describe subject, composition, light, material — and what to avoid…'))}"></textarea>
         </label>
         <div class="field">
@@ -147,12 +183,14 @@ export function mount(root) {
             </label>
           </div>
         </details>
-        <button class="btn btn-generate" id="generate">
-          <span class="gen-ic">${icon('spark', 17)}</span>
-          <span class="gen-label">${esc(t('开始生成', 'Generate'))}</span>
-          <kbd>${modKey()} ↵</kbd>
-        </button>
-        <p class="fine">${esc(t('图片自动存进本机作品库，不会上传到别处。', 'Images stay on this machine in your local library.'))}</p>
+        <div class="composer-foot">
+          <button class="btn btn-generate" id="generate">
+            <span class="gen-ic">${icon('spark', 17)}</span>
+            <span class="gen-label">${esc(t('开始生成', 'Generate'))}</span>
+            <kbd>${modKey()} ↵</kbd>
+          </button>
+          <p class="fine">${esc(t('图片自动存进本机作品库，不会上传到别处。', 'Images stay on this machine in your local library.'))}</p>
+        </div>
       </aside>
 
       <section class="gallery-pane">
@@ -176,6 +214,191 @@ export function mount(root) {
 
   const promptEl = $('#prompt')
   const galleryEl = $('#gallery')
+
+  // ---- 创作方式与源图 ----
+  let createMode = 'generate'
+  let sources = []
+  let sourceIndex = 0
+
+  const MODE_HINT = {
+    generate: ['从提示词生成新图片，参考图为可选。', 'Generate a new image from a prompt; references are optional.'],
+    edit: ['修改整张源图，可以加多张源图分别改。', 'Rewrite a whole source image; add several sources to edit them one by one.'],
+    outpaint: ['在画布上给源图扩边，扩出来的区域由模型补全。', 'Extend the canvas on a source; the model fills the new border.'],
+    inpaint: ['在画布涂红需要修改的区域，再进行精准重绘。', 'Paint red over the area to change, then repaint just that part.'],
+  }
+  const MODE_LABEL = {
+    generate: ['提示词', 'Prompt'],
+    edit: ['修改要求', 'Change request'],
+    outpaint: ['修改要求', 'Change request'],
+    inpaint: ['修改要求', 'Change request'],
+  }
+
+  function isEditMode() { return createMode !== 'generate' }
+
+  function renderSources() {
+    const list = $('#source-list')
+    if (!list) return
+    const badge = $('#source-badge')
+    if (badge) badge.textContent = `${sources.length} ${t('张源图已就绪', 'ready')}`
+    const empty = $('#source-empty')
+    if (empty) empty.hidden = sources.length > 0
+    list.innerHTML = sources.map((item, index) => `
+      <div class="source-item ${index === sourceIndex ? 'is-on' : ''}" data-source-index="${index}">
+        <span class="source-no">${esc(t('源图', 'Source'))} ${index + 1}</span>
+        <img src="${esc(item.url)}" alt="">
+        <span class="source-name">${esc(item.name || '')}</span>
+        ${item.hasMask ? `<span class="source-tag">${esc(t('蒙版', 'mask'))}</span>` : ''}
+        ${item.expand && (item.expand.l || item.expand.r || item.expand.t || item.expand.b) ? `<span class="source-tag">${esc(t('扩边', 'expand'))}</span>` : ''}
+        <button type="button" class="mini-x" data-source-remove="${index}" aria-label="${esc(t('移除', 'Remove'))}">${icon('x', 11)}</button>
+      </div>`).join('')
+  }
+
+  function addSource(item) {
+    sources.push({ ...item, hasMask: false, expand: null })
+    sourceIndex = sources.length - 1
+    renderSources()
+  }
+
+  /** 从剪贴板、拖拽或文件选择拿到的一组图片，逐个上传成源图 */
+  async function addSourceFiles(files) {
+    const images = [...(files ?? [])].filter(file => file?.type?.startsWith('image/'))
+    if (!images.length) return
+    let added = 0
+    for (const file of images) {
+      try {
+        const result = await upload(file)
+        addSource({ name: file.name || `paste-${Date.now()}.png`, url: result.url })
+        added++
+      } catch (err) {
+        app.toast(err.message, 'error')
+      }
+    }
+    if (added) app.toast(t(`已加入 ${added} 张源图`, `Added ${added} source(s)`), 'success')
+  }
+
+  function pickSourceFiles() {
+    const input = $('#source-file')
+    if (input) input.click()
+  }
+
+  function setCreateMode(next) {
+    createMode = next
+    $$('#create-mode [data-mode]').forEach(btn => btn.classList.toggle('is-on', btn.dataset.mode === createMode))
+    $('#source-panel').hidden = !isEditMode()
+    const hint = MODE_HINT[createMode]
+    $('#mode-hint').textContent = t(hint[0], hint[1])
+    const label = MODE_LABEL[createMode]
+    $('#prompt-label').textContent = t(label[0], label[1])
+    const genLabel = {
+      generate: t('开始生成', 'Generate'),
+      edit: t('开始编辑', 'Edit'),
+      outpaint: t('开始扩图', 'Outpaint'),
+      inpaint: t('开始局部重绘', 'Inpaint'),
+    }[createMode]
+    $('#generate .gen-label').textContent = genLabel
+    promptEl.placeholder = isEditMode()
+      ? t('想怎么改这张图？例如把白盒改成可交互的游戏平台', 'How should this image change? For example, make the white box interactive')
+      : t('描述主体、构图、光线、材质，以及不想出现的东西…', 'Describe subject, composition, light, material — and what to avoid…')
+  }
+
+  $('#create-mode').addEventListener('click', event => {
+    const btn = event.target.closest('[data-mode]')
+    if (!btn) return
+    setCreateMode(btn.dataset.mode)
+  })
+
+  $('#source-list').addEventListener('click', event => {
+    const remove = event.target.closest('[data-source-remove]')
+    if (remove) {
+      const index = Number(remove.dataset.sourceRemove)
+      sources.splice(index, 1)
+      if (sourceIndex >= sources.length) sourceIndex = Math.max(0, sources.length - 1)
+      renderSources()
+      return
+    }
+    const item = event.target.closest('[data-source-index]')
+    if (!item) return
+    sourceIndex = Number(item.dataset.sourceIndex)
+    renderSources()
+  })
+
+  const sourceDrop = $('#source-drop')
+  sourceDrop.addEventListener('click', event => {
+    if (event.target.closest('.source-item')) return
+    pickSourceFiles()
+  })
+  sourceDrop.addEventListener('keydown', event => {
+    if (event.target.closest('.source-item')) return
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pickSourceFiles() }
+  })
+  for (const type of ['dragenter', 'dragover']) {
+    sourceDrop.addEventListener(type, event => { event.preventDefault(); sourceDrop.classList.add('is-over') })
+  }
+  for (const type of ['dragleave', 'drop']) {
+    sourceDrop.addEventListener(type, event => { event.preventDefault(); sourceDrop.classList.remove('is-over') })
+  }
+  sourceDrop.addEventListener('drop', event => {
+    addSourceFiles(event.dataTransfer?.files)
+  })
+
+  $('#source-local').addEventListener('click', pickSourceFiles)
+  $('#source-library').addEventListener('click', async () => {
+    const picked = await pickFromLibrary()
+    if (picked) addSource(picked)
+  })
+  $('#source-file').addEventListener('change', async event => {
+    await addSourceFiles(event.target.files)
+    event.target.value = ''
+  })
+  $('#source-canvas').addEventListener('click', async () => {
+    const source = sources[sourceIndex]
+    if (!source) return app.toast(t('先添加一张源图', 'Add a source image first'), 'error')
+    try {
+      const { openCanvasEditor } = await import('./image-editor.js')
+      await openCanvasEditor({
+        source: { name: source.name, url: source.url },
+        mask: source.mask ?? null,
+        expand: source.expand ?? null,
+        onApply: result => {
+          source.mask = result.mask
+          source.expand = result.expand
+          source.hasMask = true
+          renderSources()
+          app.toast(t('已应用蒙版和扩边', 'Mask and expand applied'), 'success')
+        },
+      })
+    } catch (err) {
+      app.toast(err.message, 'error')
+    }
+  })
+
+  /** 从作品库里挑一张图当源图 */
+  function pickFromLibrary() {
+    return new Promise(resolve => {
+      const rows = (app.state?.images ?? []).filter(row => row.file && row.status === 'done')
+      if (!rows.length) {
+        app.toast(t('作品库里还没有图', 'No finished images yet'), 'error')
+        resolve(null)
+        return
+      }
+      const card = document.createElement('div')
+      card.className = 'dialog dialog-wide'
+      card.innerHTML = `
+        <h3>${esc(t('选一张源图', 'Pick a source image'))}</h3>
+        <div class="picker-grid">${rows.map(row => `<button type="button" data-pick="${row.id}"><img src="${fileUrl(row.file)}" alt=""><span>${esc((row.prompt || t('未命名', 'Untitled')).slice(0, 18))}</span></button>`).join('')}</div>
+        <div class="dialog-actions"><button class="btn btn-ghost" data-act="cancel">${esc(t('取消', 'Cancel'))}</button></div>`
+      let close = () => {}
+      card.querySelectorAll('[data-pick]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const row = rows.find(item => item.id === btn.dataset.pick)
+          close()
+          resolve(row ? { name: row.file, url: fileUrl(row.file), row } : null)
+        })
+      })
+      card.querySelector('[data-act="cancel"]').addEventListener('click', () => { close(); resolve(null) })
+      close = app.showLayer(card, { className: 'layer-dialog' })
+    })
+  }
 
   // ---- 初始化 ----
   promptEl.addEventListener('input', () => {
@@ -309,7 +532,9 @@ export function mount(root) {
       .filter(Boolean)
     if (!files.length) return
     event.preventDefault()
-    addReferences(files)
+    // 编辑类模式粘贴进源图，生成模式粘贴进参考图
+    if (isEditMode()) addSourceFiles(files)
+    else addReferences(files)
   }
   document.addEventListener('paste', onPaste)
 
@@ -377,6 +602,7 @@ export function mount(root) {
         <div class="shot-meta"><span class="tag">${esc(styleName(row.style) || t('无风格', 'No style'))}</span><span class="ellipsis">${esc(row.model || '')}</span><time>${esc(fmtTime(row.createdAt))}</time></div>
         <div class="shot-actions">
           <button type="button" data-act="reuse" data-id="${row.id}">${icon('refresh', 13)}${esc(t('复用', 'Reuse'))}</button>
+          <button type="button" data-act="edit" data-id="${row.id}">${icon('wand', 13)}${esc(t('重绘', 'Repaint'))}</button>
           <button type="button" data-act="copy" data-id="${row.id}">${icon('copy', 13)}${esc(t('复制', 'Copy'))}</button>
           <button type="button" data-act="delete" data-id="${row.id}" class="danger-quiet">${icon('trash', 13)}</button>
         </div>
@@ -475,6 +701,15 @@ export function mount(root) {
       await reuseImage(row)
       return
     }
+    if (act === 'edit') {
+      try {
+        setCreateMode(createMode === 'generate' ? 'inpaint' : createMode)
+        addSource({ name: row.file, url: fileUrl(row.file) })
+        document.querySelector('.composer')?.scrollTo({ top: 9999, behavior: 'smooth' })
+        app.toast(t('已加入源图，点「编辑当前选中」打开画布', 'Added as source; use Edit selected to open the canvas'), 'success')
+      } catch (err) { app.toast(err.message, 'error') }
+      return
+    }
     if (act === 'retry') {
       try { await api('image/action', { id, action: 'retry' }); await app.refresh() } catch (err) { app.toast(err.message, 'error') }
       return
@@ -546,6 +781,7 @@ export function mount(root) {
           </div>
           <div class="lb-actions">
             <button class="btn btn-primary" data-lb="download">${icon('download', 15)}${esc(t('下载', 'Download'))}</button>
+            <button class="btn btn-ghost" data-lb="edit">${icon('wand', 15)}${esc(t('重绘 / 扩图', 'Repaint / Outpaint'))}</button>
             <button class="btn btn-ghost" data-lb="copy-image">${icon('copy', 15)}${esc(t('复制图片', 'Copy image'))}</button>
             <button class="btn btn-ghost" data-lb="fav">${icon('heart', 15)}${row.favorite ? t('取消收藏', 'Unsave') : t('收藏', 'Save')}</button>
             <button class="btn btn-ghost" data-lb="copy">${icon('copy', 15)}${esc(t('复制提示词', 'Copy prompt'))}</button>
@@ -565,6 +801,13 @@ export function mount(root) {
               await copyImage(fileUrl(row.file))
               app.toast(t('图片已复制到剪贴板', 'Image copied to clipboard'), 'success')
             } catch (err) { app.toast(err.message || t('复制失败', 'Copy failed'), 'error') }
+            return
+          }
+          if (act === 'edit') {
+            try {
+              closeRef.fn()
+              await openEditor(row)
+            } catch (err) { app.toast(err.message, 'error') }
             return
           }
           if (act === 'copy') { await copyText(row.prompt); app.toast(t('已复制', 'Copied'), 'success'); return }
@@ -599,6 +842,162 @@ export function mount(root) {
     closeRef.fn = app.showLayer(cardEl, { className: 'layer-lightbox', onClose: () => document.removeEventListener('keydown', onKey) })
   }
 
+  /** 把一张源图按当前模式送去做编辑，返回合成后的图片 blob */
+  async function runSourceEdit(source, prompt) {
+    const bitmap = await createImageBitmap(await (await fetch(source.url, { credentials: 'same-origin' })).blob())
+    const scale = Math.min(1, 1536 / Math.max(bitmap.width, bitmap.height))
+    const width = Math.round(bitmap.width * scale)
+    const height = Math.round(bitmap.height * scale)
+    const original = document.createElement('canvas')
+    original.width = width
+    original.height = height
+    original.getContext('2d').drawImage(bitmap, 0, 0, width, height)
+    bitmap.close?.()
+
+    const expand = source.expand ?? { l: 0, r: 0, t: 0, b: 0 }
+    const hasExpand = Boolean(expand.l || expand.r || expand.t || expand.b)
+    const mask = source.mask ?? null
+
+    // 编辑模式：整张图重写
+    if (createMode === 'edit') {
+      const form = new FormData()
+      form.set('prompt', prompt)
+      form.set('style', style || '')
+      form.set('image', await toBlob(original), 'image.png')
+      const response = await fetch('/media-workbench-modern/api/image/edit', { method: 'POST', body: form })
+      if (!response.ok) throw new Error(await readError(response))
+      return { blob: await response.blob(), width, height }
+    }
+
+    // 扩图：先把画布撑大，新区域交给模型
+    let base = original
+    let region = null
+    let offsetX = 0
+    let offsetY = 0
+    if (hasExpand) {
+      base = document.createElement('canvas')
+      base.width = width + expand.l + expand.r
+      base.height = height + expand.t + expand.b
+      const ctx = base.getContext('2d')
+      ctx.drawImage(original, expand.l, expand.t)
+      if (expand.r > 0) ctx.drawImage(original, width - 1, 0, 1, height, expand.l + width, expand.t, expand.r, height)
+      if (expand.l > 0) ctx.drawImage(original, 0, 0, 1, height, 0, expand.t, expand.l, height)
+      if (expand.b > 0) ctx.drawImage(original, 0, height - 1, width, 1, expand.l, expand.t + height, width, expand.b)
+      if (expand.t > 0) ctx.drawImage(original, 0, 0, width, 1, expand.l, 0, width, expand.t)
+      offsetX = expand.l
+      offsetY = expand.t
+      if (expand.r > 0) region = { x: expand.l + width, y: expand.t, w: expand.r, h: height }
+      else if (expand.l > 0) region = { x: 0, y: expand.t, w: expand.l, h: height }
+      else if (expand.b > 0) region = { x: expand.l, y: expand.t + height, w: width, h: expand.b }
+      else region = { x: expand.l, y: 0, w: width, h: expand.t }
+    }
+
+    // 局部重绘：按蒙版范围裁一块送去生成，再贴回来
+    let crop = base
+    let cropRect = { x: 0, y: 0, w: base.width, h: base.height }
+    let maskCrop = null
+    if (createMode === 'inpaint' && mask) {
+      const box = maskBounds(mask)
+      if (!box) throw new Error(t('先在画布上涂出要修改的区域', 'Paint the area to change first'))
+      const marginX = Math.round(box.w * 0.75)
+      const marginY = Math.round(box.h * 0.75)
+      const x = Math.max(0, box.x - marginX)
+      const y = Math.max(0, box.y - marginY)
+      const w = Math.min(base.width - x, box.w + marginX * 2)
+      const h = Math.min(base.height - y, box.h + marginY * 2)
+      crop = document.createElement('canvas')
+      crop.width = w
+      crop.height = h
+      crop.getContext('2d').drawImage(base, x, y, w, h, 0, 0, w, h)
+      cropRect = { x, y, w, h }
+      maskCrop = document.createElement('canvas')
+      maskCrop.width = w
+      maskCrop.height = h
+      maskCrop.getContext('2d').drawImage(mask, offsetX + x, offsetY + y, w, h, 0, 0, w, h)
+    }
+
+    const form = new FormData()
+    form.set('prompt', prompt)
+    form.set('style', style || '')
+    form.set('image', await toBlob(crop), 'crop.png')
+    const response = await fetch('/media-workbench-modern/api/image/edit', { method: 'POST', body: form })
+    if (!response.ok) throw new Error(await readError(response))
+    const generated = await createImageBitmap(await response.blob())
+
+    // 把生成结果缩放回裁剪区，只在蒙版范围内替换
+    const scaled = document.createElement('canvas')
+    scaled.width = cropRect.w
+    scaled.height = cropRect.h
+    scaled.getContext('2d').drawImage(generated, 0, 0, cropRect.w, cropRect.h)
+    generated.close?.()
+
+    const finalCanvas = document.createElement('canvas')
+    finalCanvas.width = base.width
+    finalCanvas.height = base.height
+    const finalCtx = finalCanvas.getContext('2d')
+    finalCtx.drawImage(base, 0, 0)
+
+    if (maskCrop) {
+      const soft = document.createElement('canvas')
+      soft.width = cropRect.w
+      soft.height = cropRect.h
+      const softCtx = soft.getContext('2d')
+      softCtx.filter = 'blur(3px)'
+      softCtx.drawImage(maskCrop, 0, 0)
+      softCtx.filter = 'none'
+      const patch = document.createElement('canvas')
+      patch.width = cropRect.w
+      patch.height = cropRect.h
+      const patchCtx = patch.getContext('2d')
+      patchCtx.drawImage(scaled, 0, 0)
+      patchCtx.globalCompositeOperation = 'destination-in'
+      patchCtx.drawImage(soft, 0, 0)
+      finalCtx.drawImage(patch, cropRect.x, cropRect.y)
+    } else if (region) {
+      const patch = document.createElement('canvas')
+      patch.width = region.w
+      patch.height = region.h
+      patch.getContext('2d').drawImage(scaled, region.x - cropRect.x, region.y - cropRect.y, region.w, region.h, 0, 0, region.w, region.h)
+      finalCtx.drawImage(patch, region.x, region.y)
+    } else {
+      finalCtx.drawImage(scaled, 0, 0)
+    }
+    return { blob: await toBlob(finalCanvas), width: finalCanvas.width, height: finalCanvas.height }
+  }
+
+  async function readError(response) {
+    try {
+      const data = await response.json()
+      return data.error || `请求失败（${response.status}）`
+    } catch {
+      return `请求失败（${response.status}）`
+    }
+  }
+
+  function toBlob(canvas) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('导出失败'))), 'image/png')
+    })
+  }
+
+  function maskBounds(mask) {
+    const ctx = mask.getContext('2d')
+    const { width, height } = mask
+    const data = ctx.getImageData(0, 0, width, height).data
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (data[(y * width + x) * 4 + 3] <= 8) continue
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+    if (minX === Infinity) return null
+    return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 }
+  }
+
   async function generate() {
     if (busy) return
     const prompt = promptEl.value.trim()
@@ -610,35 +1009,62 @@ export function mount(root) {
       app.toast(t('先配置生图服务', 'Configure an image provider first'), 'error')
       return app.navigate('settings')
     }
+    if (isEditMode() && !sources.length) {
+      return app.toast(t('先添加一张源图', 'Add a source image first'), 'error')
+    }
     busy = true
     const btn = $('#generate')
     btn.classList.add('is-busy')
     btn.querySelector('.gen-label').textContent = t('正在提交…', 'Sending…')
     try {
-      await api('image/generate', {
-        prompt,
-        style: style || '',
-        ratio,
-        count,
-        quality: $('#quality').value,
-        negative: $('#negative').value.trim(),
-        references: references.map(item => item.name),
-      })
-      api('preferences', { imageStyle: style, imageRatio: ratio, imageCount: count }).catch(() => {})
-      app.toast(t(`已提交 ${count} 张，稍等片刻`, `Queued ${count} image(s)`), 'success')
+      if (isEditMode()) {
+        let done = 0
+        for (const source of sources) {
+          const result = await runSourceEdit(source, prompt)
+          const form = new FormData()
+          form.set('file', result.blob, 'edited.png')
+          form.set('prompt', prompt)
+          form.set('style', style || '')
+          form.set('mode', createMode)
+          form.set('source', source.name || '')
+          form.set('width', String(result.width))
+          form.set('height', String(result.height))
+          await uploadForm('image/save', form)
+          done++
+        }
+        app.toast(t(`已提交 ${done} 张`, `Submitted ${done} image(s)`), 'success')
+      } else {
+        await api('image/generate', {
+          prompt,
+          style: style || '',
+          ratio,
+          count,
+          quality: $('#quality').value,
+          negative: $('#negative').value.trim(),
+          references: references.map(item => item.name),
+        })
+        api('preferences', { imageStyle: style, imageRatio: ratio, imageCount: count }).catch(() => {})
+        app.toast(t(`已提交 ${count} 张，稍等片刻`, `Queued ${count} image(s)`), 'success')
+      }
       await app.refresh()
     } catch (err) {
       app.toast(err.message, 'error')
     } finally {
       busy = false
       btn.classList.remove('is-busy')
-      btn.querySelector('.gen-label').textContent = t('开始生成', 'Generate')
+      btn.querySelector('.gen-label').textContent = {
+        generate: t('开始生成', 'Generate'),
+        edit: t('开始编辑', 'Edit'),
+        outpaint: t('开始扩图', 'Outpaint'),
+        inpaint: t('开始局部重绘', 'Inpaint'),
+      }[createMode]
     }
   }
 
   function update() {
     renderProvider()
     renderGallery()
+    renderSources()
   }
 
   update()

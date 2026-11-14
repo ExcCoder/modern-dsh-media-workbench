@@ -10,12 +10,14 @@ import {
   canConnect, dependencyClosure, normalizeGraph, templateGraph, topoWaves, createNode, NODE_TYPES,
 } from '../src/graph.js'
 import { normalizeState, Store } from '../src/store.js'
-import { imageReady, publicSettings, Settings, videoReady } from '../src/settings.js'
-import { styledPrompt, generateImage } from '../src/image.js'
+import { imageReady, publicSettings, Settings, videoReady, voiceReady, writingReady } from '../src/settings.js'
+import { streamChat } from '../src/chat.js'
+import { listModels, parseModels } from '../src/models.js'
+import { styledPrompt, generateImage, editImage } from '../src/image.js'
 import { writingPrompts, cleanOutput } from '../src/writing.js'
 import { generateVideo } from '../src/video.js'
 import { generateVoice } from '../src/voice.js'
-import { assertRemoteUrl, extensionOf, imageSize } from '../src/util.js'
+import { assertRemoteUrl, editModeOf, extensionOf, imageSize } from '../src/util.js'
 
 async function withTemp(fn) {
   const root = await mkdtemp(join(tmpdir(), 'modern-media-verify-'))
@@ -184,6 +186,214 @@ test('多张参考图会按顺序走 image[] 字段', async () => {
   })
 })
 
+test('图片编辑方式会原样保留 edit / outpaint / inpaint', () => {
+  assert.equal(editModeOf('edit'), 'edit')
+  assert.equal(editModeOf('outpaint'), 'outpaint')
+  assert.equal(editModeOf('inpaint'), 'inpaint')
+  assert.equal(editModeOf(''), 'inpaint')
+  assert.equal(editModeOf(undefined), 'inpaint')
+  assert.equal(editModeOf('generate'), 'inpaint')
+})
+
+test('图片编辑把裁剪图和提示词发给 /images/edits', async () => {
+  const png = Buffer.alloc(24)
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png)
+  png.writeUInt32BE(2, 16)
+  png.writeUInt32BE(3, 20)
+  const settings = {
+    image: { baseUrl: 'https://example.com', model: 'test-image', apiKey: 'key', extra: '', size: '', quality: '' },
+  }
+  const realFetch = globalThis.fetch
+  let called = null
+  globalThis.fetch = async (url, init = {}) => {
+    if (String(url).endsWith('/images/edits')) {
+      called = { url: String(url), form: init.body }
+      return new Response(JSON.stringify({ data: [{ b64_json: png.toString('base64') }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response('not found', { status: 404 })
+  }
+  try {
+    const result = await editImage(settings, {
+      prompt: '换成红苹果',
+      style: '电影感',
+      image: png,
+      imageType: 'image/png',
+      imageSize: { width: 2, height: 3 },
+    })
+    assert.equal(called.url, 'https://example.com/images/edits')
+    assert.match(called.form.get('prompt'), /换成红苹果。cinematic/)
+    assert.equal(called.form.get('size'), '2x3')
+    assert.ok(called.form.get('image'))
+    assert.equal(result.ext, '.png')
+    assert.equal(result.width, 2)
+    assert.equal(result.height, 3)
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+test('供应商可保存多条并同步到扁平字段', async () => {
+  await withTemp(async dir => {
+    const settings = new Settings(dir)
+    const first = await settings.update({
+      image: { provider: { name: '主力', baseUrl: 'https://a.example.com/v1', model: 'm-a', apiKey: 'key-a' } },
+    })
+    assert.equal(first.image.providers.length, 1)
+    assert.equal(first.image.baseUrl, 'https://a.example.com/v1')
+    assert.equal(first.image.model, 'm-a')
+    const idA = first.image.providers[0].id
+
+    const second = await settings.update({
+      image: { provider: { name: '备用', baseUrl: 'https://b.example.com/v1', model: 'm-b', apiKey: 'key-b' } },
+    })
+    assert.equal(second.image.providers.length, 2)
+    assert.equal(second.image.baseUrl, 'https://b.example.com/v1')
+    const idB = second.image.providers[1].id
+
+    // 切回第一条，扁平字段跟着变
+    const switched = await settings.update({ image: { activeId: idA } })
+    assert.equal(switched.image.model, 'm-a')
+    assert.equal(switched.image.baseUrl, 'https://a.example.com/v1')
+
+    // 检测到的模型存到指定供应商
+    const saved = await settings.update({ image: { models: { id: idB, list: ['m-b', 'm-b2', 'm-b'] } } })
+    const backup = saved.image.providers.find(item => item.id === idB)
+    assert.deepEqual(backup.models, ['m-b', 'm-b2'])
+    assert.ok(backup.modelsAt)
+
+    // publicSettings 不泄露密钥，但给出提示和模型
+    const exposed = publicSettings(saved)
+    assert.equal(exposed.image.providers[1].apiKey, undefined)
+    assert.equal(exposed.image.providers[1].hasKey, true)
+    assert.deepEqual(exposed.image.providers[1].models, ['m-b', 'm-b2'])
+
+    // 删除
+    const removed = await settings.update({ image: { removeProvider: idB } })
+    assert.equal(removed.image.providers.length, 1)
+    assert.equal(removed.image.providers[0].id, idA)
+    assert.equal(removed.image.baseUrl, 'https://a.example.com/v1')
+  })
+})
+
+test('老的扁平配置会迁移成一条供应商', async () => {
+  await withTemp(async dir => {
+    const settings = new Settings(dir)
+    await settings.update({ image: { baseUrl: 'https://old.example.com/v1', model: 'old-model', apiKey: 'old-key' } })
+    const read = await settings.read()
+    assert.equal(read.image.providers.length, 1)
+    assert.equal(read.image.providers[0].baseUrl, 'https://old.example.com/v1')
+    assert.equal(read.image.providers[0].model, 'old-model')
+    assert.equal(read.image.apiKey, 'old-key')
+    assert.equal(read.image.activeId, read.image.providers[0].id)
+  })
+})
+
+test('模型列表能从各种返回结构里解析出来', () => {
+  assert.deepEqual(parseModels({ data: [{ id: 'b' }, { id: 'a' }] }), ['a', 'b'])
+  assert.deepEqual(parseModels({ data: ['x', 'y'] }), ['x', 'y'])
+  assert.deepEqual(parseModels({ models: [{ name: 'n1' }, { model: 'n2' }] }), ['n1', 'n2'])
+  assert.deepEqual(parseModels({ result: { list: [{ id: 'z' }] } }), ['z'])
+  assert.deepEqual(parseModels({}), [])
+})
+
+test('模型检测按 OpenAI /models 形状请求并带上密钥', async () => {
+  const calls = []
+  const fakeFetch = async (url, init = {}) => {
+    calls.push({ url: String(url), auth: init.headers?.authorization })
+    return new Response(JSON.stringify({ data: [{ id: 'gpt-image-2.5' }, { id: 'gpt-image-1' }] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+  const { models } = await listModels({ baseUrl: 'https://example.com/v1/', apiKey: 'k-1' }, { fetchImpl: fakeFetch })
+  assert.equal(calls[0].url, 'https://example.com/v1/models')
+  assert.equal(calls[0].auth, 'Bearer k-1')
+  assert.deepEqual(models, ['gpt-image-1', 'gpt-image-2.5'])
+
+  const failing = async () => new Response('nope', { status: 401 })
+  await assert.rejects(() => listModels({ baseUrl: 'https://example.com/v1', apiKey: 'k' }, { fetchImpl: failing }), /密钥被拒绝/)
+})
+
+test('视频、语音、写作也能存多条供应商', async () => {
+  await withTemp(async dir => {
+    const settings = new Settings(dir)
+    for (const kind of ['video', 'voice', 'writing']) {
+      const one = await settings.update({ [kind]: { provider: { name: `${kind}-a`, baseUrl: 'https://a.example.com/v1', model: `${kind}-m1`, apiKey: `${kind}-key` } } })
+      assert.equal(one[kind].providers.length, 1, kind)
+      assert.equal(one[kind].model, `${kind}-m1`)
+      const two = await settings.update({ [kind]: { provider: { name: `${kind}-b`, baseUrl: 'https://b.example.com/v1', model: `${kind}-m2`, apiKey: `${kind}-key2` } } })
+      assert.equal(two[kind].providers.length, 2, kind)
+      assert.equal(two[kind].baseUrl, 'https://b.example.com/v1')
+      // 切回第一条
+      const firstId = two[kind].providers[0].id
+      const back = await settings.update({ [kind]: { activeId: firstId } })
+      assert.equal(back[kind].model, `${kind}-m1`, kind)
+      // 密钥不回传给浏览器
+      const exposed = publicSettings(back)
+      assert.equal(exposed[kind].providers[0].apiKey, undefined)
+      assert.equal(exposed[kind].providers[0].hasKey, true)
+    }
+    const ready = await settings.read()
+    assert.equal(writingReady(ready), true)
+    assert.equal(videoReady(ready), true)
+    assert.equal(voiceReady(ready), true)
+  })
+})
+
+test('写作没配供应商时不算就绪，仍走 DSH 模型', async () => {
+  await withTemp(async dir => {
+    const settings = new Settings(dir)
+    const config = await settings.read()
+    assert.equal(writingReady(config), false)
+    assert.equal(config.writing.providers.length, 0)
+  })
+})
+
+test('写作的 /chat/completions 能解析 SSE 流', async () => {
+  const chunks = [
+    'data: {"model":"deepseek-chat","choices":[{"delta":{"content":"雨天"}}]}\n\n',
+    'data: {"choices":[{"delta":{"content":"的天台"}}]}\n\n',
+    'data: [DONE]\n\n',
+  ]
+  const body = new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk))
+      controller.close()
+    },
+  })
+  const fakeFetch = async (url, init) => {
+    assert.equal(url, 'https://api.deepseek.com/v1/chat/completions')
+    const payload = JSON.parse(init.body)
+    assert.equal(payload.stream, true)
+    assert.equal(payload.messages[0].role, 'system')
+    assert.equal(init.headers.authorization, 'Bearer w-key')
+    return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+  }
+  let streamed = ''
+  const result = await streamChat(
+    { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: 'w-key' },
+    { system: '你是编辑', user: '写一段', fetchImpl: fakeFetch, onDelta: t => { streamed += t } },
+  )
+  assert.equal(result.text, '雨天的天台')
+  assert.equal(streamed, '雨天的天台')
+})
+
+test('写作接口返回整段 JSON 时也能用', async () => {
+  const fakeFetch = async () => new Response(JSON.stringify({ model: 'glm-4', choices: [{ message: { content: '整段正文' } }] }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+  const result = await streamChat(
+    { baseUrl: 'https://x.example.com/v1', model: 'glm-4', apiKey: 'k' },
+    { system: 's', user: 'u', fetchImpl: fakeFetch },
+  )
+  assert.equal(result.text, '整段正文')
+  assert.equal(result.model, 'glm-4')
+})
+
 test('风格提示词与写作提示词', () => {
   const prompt = styledPrompt('雨后的天台', '电影感')
   assert.match(prompt, /雨后的天台/)
@@ -230,8 +440,7 @@ test('节点类型与端口契约完整', () => {
   }
 })
 
-test('语音服务按 OpenAI Audio Speech 形状请求', async () => {
-  const settings = {
+test('语音服务按 OpenAI Audio Speech 形状请求', async () => {  const settings = {
     voice: { baseUrl: 'https://example.com', model: 'tts-test', apiKey: 'key', voice: 'alloy', format: 'mp3', extra: '' },
   }
   const realFetch = globalThis.fetch

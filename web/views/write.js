@@ -377,8 +377,8 @@ export function mount(root) {
 
   async function run() {
     if (streamController) { app.toast(t('正在写，等这一段落完', 'Still writing — wait for it to finish'), 'info'); return }
-    if (!app.model) {
-      app.toast(t('当前没有写作模型。先在 DSH 里选一个模型。', 'No writing model. Choose one in DSH first.'), 'error')
+    if (!app.model && !app.settings?.writingReady) {
+      app.toast(t('当前没有写作模型。先在 DSH 里选一个模型，或者去设置里配一个写作供应商。', 'No writing model. Choose one in DSH, or configure a writing provider in settings.'), 'error')
       return
     }
     if (action === 'rewrite' && !$('#instruction').value.trim() && !selection.text) {
@@ -471,7 +471,12 @@ export function mount(root) {
 
   function paintModel() {
     const chip = $('#ai-model')
-    if (app.model) {
+    // 配了写作供应商就用它，没配才显示 DSH 当前模型
+    const custom = app.settings?.writingReady ? app.settings.writing?.model : ''
+    if (custom) {
+      chip.textContent = custom
+      chip.className = 'model-chip is-ok'
+    } else if (app.model) {
       chip.textContent = app.model.label
       chip.className = 'model-chip is-ok'
     } else {

@@ -12,3 +12,5 @@ release/
 .npmrc
 .env
 .env.*
+
+_dshfix/

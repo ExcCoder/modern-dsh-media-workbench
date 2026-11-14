@@ -59,8 +59,8 @@ function renderChrome() {
           <p class="topbar-desc" id="top-desc"></p>
         </div>
         <div class="topbar-side">
-          <a class="qq-chip" href="https://qm.qq.com/q/qAkGlBo0HC" target="_blank" rel="noopener" title="${esc(t('加入 QQ 交流群', 'Join the QQ group'))}">
-            ${icon('link', 14)}<span>${esc(t('QQ 群', 'QQ group'))}</span><b>741979677</b>
+          <a class="qq-chip" href="https://qm.qq.com/q/JdpyCDEUsC" target="_blank" rel="noopener" title="${esc(t('加入 QQ 群 Modern', 'Join the QQ group Modern'))}">
+            ${icon('link', 14)}<span>${esc(t('QQ 群', 'QQ group'))}</span><b>1132104828</b>
           </a>
           <button class="icon-btn qq-copy" id="qq-copy" title="${esc(t('复制群号', 'Copy group number'))}">${icon('copy', 14)}</button>
           <button class="status-chip" id="model-chip" title="${esc(t('DSH 当前模型', 'Current DSH model'))}"></button>
@@ -197,7 +197,7 @@ function wire() {
       return
     }
     if (event.target.closest('#qq-copy')) {
-      copyText('741979677').then(ok => bootToast(ok ? t('群号已复制', 'Group number copied') : t('复制失败', 'Copy failed'), ok ? 'success' : 'error'))
+      copyText('1132104828').then(ok => bootToast(ok ? t('群号已复制', 'Group number copied') : t('复制失败', 'Copy failed'), ok ? 'success' : 'error'))
       return
     }
     if (event.target.closest('#refresh-btn')) {
